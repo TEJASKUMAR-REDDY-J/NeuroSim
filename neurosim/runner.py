@@ -46,16 +46,11 @@ class Run:
         return self.dir.name
 
     @classmethod
-    def create(cls, case, restart=None):
+    def create(cls, case, restart=None, root=RUNS):
         case = dict(case)
         if restart:
             case["restart"] = str(restart)
-        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        slug = re.sub(r"[^a-z0-9]+", "-", case.get("name", "run").lower()).strip("-")[:40] or "run"
-        run_dir = RUNS / f"{stamp}-{slug}"
-        n = 1
-        while run_dir.exists():
-            run_dir = RUNS / f"{stamp}-{slug}-{n}"; n += 1
+        run_dir = new_dir(case.get("name", "run"), root)
         variant, derived, full = case_mod.prepare(case, run_dir)
         (run_dir / "case.json").write_text(json.dumps(full, indent=1))
         meta = {"created": datetime.datetime.now().isoformat(timespec="seconds"), "status": "created", "derived": derived, **provenance(variant)}
@@ -153,6 +148,16 @@ class Run:
 
     def checkpoints(self):
         return sorted((self.dir / "checkpoints").glob("*.nsck"), key=lambda p: int(p.stem[1:]))
+
+
+def new_dir(name, root=RUNS):
+    """Unique, sortable history directory: <stamp>-<slug>."""
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "run"
+    d, n = Path(root) / f"{stamp}-{slug}", 1
+    while d.exists():
+        d = Path(root) / f"{stamp}-{slug}-{n}"; n += 1
+    return d
 
 
 def list_runs():

@@ -207,6 +207,7 @@ def prepare(case, run_dir):
         "fill_count": len(c["fills"]),
         "steps": int(c["run"]["steps"]), "telemetry_every": int(c["run"]["telemetry_every"]), "slice_every": int(c["run"]["slice_every"]),
         "frame_fps": float(c["run"]["frame_fps"]), "render_budget": float(c["run"].get("render_budget", 0.2)), "checkpoint_every": int(c["run"]["checkpoint_every"]),
+        "export_every": int(c["run"].get("export_every", 0)),
         "vis_modes": sum(VIS[m] for m in view["modes"]), "vis_field": int(view["field"]), "camera": view["camera"],
         "slice_axis": int(view["slice_axis"]), "slice_field": int(view["slice_field"]), "u_ref": u,
         "cloud": bool(view.get("cloud", {}).get("on")), "cloud_field": int(view.get("cloud", {}).get("field", 0)),

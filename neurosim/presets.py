@@ -25,6 +25,13 @@ PRESETS = {
         "objects": [{"shape": "cylinder", "radius": 10, "axis": [0, 0, 1], "position": [0.5, 0.2, 0.5]}],
         "view": {"cloud": HAZE, "modes": ["lattice", "surface", "field"], "field": 0, "slice_axis": 2, "slice_field": 5, "camera": [0, 89, 60, 1.6]},
     },
+    "Cylinder 2D: vortex street (AI Mode starter)": {  # small and fast: ground truth for neural surrogate experiments
+        "domain": [96, 384, 1], "flow": {"direction": "+y", "u": 0.075, "re": 150}, "init_noise": 0.002,
+        "boundaries": {"x0": FS, "x1": FS, "y0": FS, "y1": FS, "z0": "periodic", "z1": "periodic"}, "forces": True,
+        "objects": [{"shape": "cylinder", "radius": 8, "axis": [0, 0, 1], "position": [0.5, 0.2, 0.5]}],
+        "run": {"steps": 12000, "telemetry_every": 100, "slice_every": 100, "frame_fps": 8, "render_budget": 0.2, "checkpoint_every": 0},
+        "view": {"modes": ["lattice", "surface", "field"], "field": 0, "slice_axis": 2, "slice_field": 5, "camera": [0, 89, 60, 1.6]},
+    },
     "Car on moving road": {
         "domain": [128, 352, 96], "flow": {"direction": "+y", "u": 0.075, "re": 100000},
         "boundaries": _tunnel(ground="moving"), "wall_velocity": [0, 0.075, 0], "forces": True, "les": True,

@@ -16,7 +16,9 @@ python -m neurosim
 
 Pick a preset (car on a moving road, Ahmed body, wing, rotating fan, sphere, cylinder vortex street, lid-driven cavity, particles, dam break, Rayleigh–Bénard convection, Taylor–Green vortex) or import an STL/OBJ/PLY model, then **Preview** or **Run**. The 3D view shows FluidX3D-style vortex lines on black, with an optional faint translucent speed haze (or a full translucent gas cloud for gas and convection cases). See [docs/app.md](docs/app.md).
 
-Requirements: an OpenCL GPU driver, `g++` (MinGW-w64 on Windows), Python 3.10+ with NumPy, PyQt5, Matplotlib.
+**AI Mode** (top bar) turns the same window into the Neural Surrogate Laboratory: take a simulation as ground truth, generate datasets with the solver under training and test conditions (Reynolds number, velocity, geometry, resolution, horizon, boundaries), train or load neural surrogates (FNO, CNN, TorchScript, ONNX, Python adapters), and measure where they fail: field and physics errors, long-rollout stability, speed and memory, ground truth vs surrogate side by side in 2D or 3D. See [docs/ai-mode.md](docs/ai-mode.md).
+
+Requirements: an OpenCL GPU driver, `g++` (MinGW-w64 on Windows), Python 3.10+ with NumPy, PyQt5, Matplotlib. AI Mode also uses PyTorch (CPU is enough) and, for ONNX models, ONNX Runtime.
 
 ## Solver optimizations (measured, Intel UHD iGPU, FP16S, D3Q19)
 
@@ -35,9 +37,10 @@ Requirements: an OpenCL GPU driver, `g++` (MinGW-w64 on Windows), Python 3.10+ w
 external/FluidX3D/     upstream solver, pinned submodule (never edited in place)
 solver/patches/        NeuroSim modifications to FluidX3D, one named patch each
 solver/worker/         solver process: case loader, telemetry, live control, slices, checkpoints, exports
-neurosim/              Python platform: build cache, cases, geometry, runs, benchmark, desktop app
-tests/                 end-to-end preset test, padding bit-identity test, GUI smoke test, drag validation
-docs/                  Phase 0 audit report, app guide, measurement logs
+neurosim/              Python platform: build cache, cases, geometry, runs, analytics, benchmark, desktop app, AI Mode
+examples/              Python adapter template for external surrogate models
+tests/                 end-to-end preset test, padding bit-identity test, GUI tests, drag validation, AI pipeline
+docs/                  Phase 0 audit report, app guide, AI Mode guide, measurement logs
 tools/phase0/          Phase 0 benchmark harness and probes
 ```
 

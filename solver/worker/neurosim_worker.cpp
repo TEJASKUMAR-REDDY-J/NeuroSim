@@ -338,6 +338,7 @@ int main(int argc, char* argv[]) {
 	ulong telemetry_every = max(1ull, cfg.value<ulong>("telemetry_every", 100ull));
 	ulong slice_every = cfg.value<ulong>("slice_every", 200ull);
 	ulong checkpoint_every = cfg.value<ulong>("checkpoint_every", 0ull);
+	const ulong export_every = cfg.value<ulong>("export_every", 0ull); // field time series (AI Mode datasets)
 	uint slice_axis = cfg.value<uint>("slice_axis", 1u), slice_field = cfg.value<uint>("slice_field", 0u), slice_max = cfg.value<uint>("slice_max", 384u);
 	uint slice_pos = cfg.value<uint>("slice_pos", (slice_axis==0u?Nx:slice_axis==1u?Ny:Nz)/2u);
 	const bool has_T = cfg.value<bool>("has_T", false), has_phi = cfg.value<bool>("has_phi", false);
@@ -539,7 +540,8 @@ int main(int argc, char* argv[]) {
 	double frame_fps = cfg.value<float>("frame_fps", 8.0f), last_frame = now_s();
 	double render_budget = cfg.value<float>("render_budget", 0.2f); // max share of wall time spent on live frames
 	auto next_multiple = [&](const ulong every) { return every ? (lbm.get_t()/every+1ull)*every : max_ulong; }; // schedules on fixed multiples: interaction and restarts never shift them
-	ulong next_tel = next_multiple(telemetry_every), next_slice = next_multiple(slice_every), next_ckpt = next_multiple(checkpoint_every);
+	ulong next_tel = next_multiple(telemetry_every), next_slice = next_multiple(slice_every), next_ckpt = next_multiple(checkpoint_every), next_export = next_multiple(export_every);
+	if(export_every && lbm.get_t()%export_every==0ull) export_fields(); // the series includes its initial state
 	ulong t_mark = lbm.get_t(); double clock_mark = now_s(), compute_s = 0.0, steps_per_s = 0.0;
 	while(!stop) {
 		string line;
@@ -558,6 +560,15 @@ int main(int argc, char* argv[]) {
 			else if(cmd=="cloud") { int on=0; in >> on >> cloud_field >> cloud_gain >> cloud_density; cloud_on = on!=0; write_frame(); last_frame = now_s(); }
 			else if(cmd=="frame") write_frame();
 			else if(cmd=="export") export_fields();
+			else if(cmd=="load") { // viewer: show a field snapshot (raw float32 rho[N], float32 u[3N], uint8 flags[N]) with this renderer; the solver is not stepped
+				string path; std::getline(in>>std::ws, path);
+				const ulong N = lbm.get_N();
+				std::ifstream file(path, std::ios::in|std::ios::binary);
+				if(file.read((char*)dom.rho.data(), (std::streamsize)(N*4ull)) && file.read((char*)dom.u.data(), (std::streamsize)(3ull*N*4ull)) && file.read((char*)dom.flags.data(), (std::streamsize)N)) {
+					dom.rho.write_to_device(); dom.u.write_to_device(); dom.flags.write_to_device(); // update_fields() does not overwrite them while t is unchanged
+					write_frame(); last_frame = now_s();
+				} else emit("{\"type\":\"error\",\"message\":"+jquote("cannot read snapshot "+path)+"}");
+			}
 			else if(cmd=="checkpoint") checkpoint();
 		}
 		if(stdin_closed) stop = true;
@@ -569,7 +580,7 @@ int main(int argc, char* argv[]) {
 		}
 		// chunk length: bounded by the next scheduled output and by ~1/fps of wall time, so commands and frames stay responsive
 		const double budget = frame_fps>0.0 ? fmin(0.1, 1.0/frame_fps) : 0.25;
-		ulong chunk = min(min(next_tel, next_slice), next_ckpt)-lbm.get_t();
+		ulong chunk = min(min(min(next_tel, next_slice), next_ckpt), next_export)-lbm.get_t();
 		chunk = min(chunk, max(1ull, (ulong)(steps_per_s*budget)));
 		if(steps) chunk = min(chunk, steps-lbm.get_t());
 		if(!rotating.empty()) chunk = min(chunk, (ulong)rot_dt-lbm.get_t()%(ulong)rot_dt); // geometry updates only at multiples of rotation_dt, independent of chunking
@@ -597,6 +608,7 @@ int main(int argc, char* argv[]) {
 		if(t>=next_slice) { write_slice(); next_slice = next_multiple(slice_every); }
 		if(frame_fps>0.0 && now_s()-last_frame>=fmax(1.0/frame_fps, last_render_dt/fmax(render_budget, 0.01))) { write_frame(); last_frame = now_s(); }
 		if(t>=next_ckpt) { checkpoint(); next_ckpt = next_multiple(checkpoint_every); }
+		if(t>=next_export) { export_fields(); next_export = next_multiple(export_every); }
 	}	emit("{\"type\":\"stopped\",\"t\":"+to_string(lbm.get_t())+"}");
 	telemetry.close();
 	_exit(0); // skip static destructors of detached threads

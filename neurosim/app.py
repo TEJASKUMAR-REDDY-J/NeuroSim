@@ -83,6 +83,17 @@ QStatusBar {{ background: {C['panel']}; color: {C['muted']}; border-top: 1px sol
 QTextEdit {{ background: {C['card']}; border: 1px solid {C['border']}; border-radius: 8px; }}
 QProgressBar {{ background: {C['card']}; border: none; border-radius: 2px; max-height: 3px; }}
 QProgressBar::chunk {{ background: {C['accent']}; }}
+QPushButton#aimode {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 rgba(79,140,255,0.20), stop:1 rgba(168,85,247,0.28));
+    border: 1px solid #7c6cf7; border-radius: 7px; padding: 6px 14px; font-weight: 600; }}
+QPushButton#aimode:hover {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 rgba(79,140,255,0.32), stop:1 rgba(168,85,247,0.42)); }}
+QPushButton#nav {{ background: transparent; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 12px; color: {C['muted']}; font-weight: 600; }}
+QPushButton#nav:checked {{ color: {C['text']}; border-bottom-color: #a855f7; }}
+QPushButton#nav:hover {{ color: {C['text']}; }}
+QFrame#modelcard {{ background: {C['card2']}; border: 1px solid {C['border']}; border-radius: 10px; }}
+QTableWidget {{ background: {C['card']}; alternate-background-color: {C['card2']}; border: 1px solid {C['border']}; border-radius: 8px; selection-background-color: rgba(79,140,255,0.25); outline: none; }}
+QTableWidget::item {{ padding: 4px 8px; }}
+QHeaderView::section {{ background: {C['panel']}; color: {C['muted']}; border: none; border-bottom: 1px solid {C['border']}; padding: 6px 8px; font-weight: 600; }}
+QDialog {{ background: {C['bg']}; }}
 """
 
 
@@ -130,6 +141,17 @@ def icon(name, color="#e7eaf0", size=18):
         path.moveTo(3, 7); path.lineTo(9, 7); path.lineTo(11, 9); path.lineTo(21, 9); path.lineTo(21, 19); path.lineTo(3, 19); path.closeSubpath(); p.drawPath(path)
     elif name == "refresh":
         p.drawArc(QtCore.QRectF(5, 5, 14, 14), 30 * 16, 300 * 16); p.drawLine(19, 5, 19, 10); p.drawLine(19, 10, 14, 10)
+    elif name == "neural":  # small network: three inputs, two hidden, one output
+        nodes = [(4, 6), (4, 12), (4, 18), (12, 8.5), (12, 15.5), (20, 12)]
+        p.setPen(QtGui.QPen(col, 1.2))
+        for a in nodes[:3]:
+            for b in nodes[3:5]:
+                p.drawLine(QtCore.QPointF(*a), QtCore.QPointF(*b))
+        for a in nodes[3:5]:
+            p.drawLine(QtCore.QPointF(*a), QtCore.QPointF(*nodes[5]))
+        p.setPen(Qt.NoPen); p.setBrush(col)
+        for x, y in nodes:
+            p.drawEllipse(QtCore.QPointF(x, y), 2.3, 2.3)
     elif name == "logo":
         g = QtGui.QLinearGradient(0, 0, 24, 24); g.setColorAt(0, QtGui.QColor("#4f8cff")); g.setColorAt(1, QtGui.QColor("#a855f7"))
         p.setPen(QtGui.QPen(QtGui.QBrush(g), 2.4, Qt.SolidLine, Qt.RoundCap))
@@ -146,9 +168,19 @@ def section(text):
     return l
 
 
+def rgba(color, alpha):
+    """'#rrggbb' with alpha 0..255 as a QSS rgba() (QSS reads 8-digit hex as #AARRGGBB, not #RRGGBBAA)."""
+    c = QtGui.QColor(color)
+    return f"rgba({c.red()},{c.green()},{c.blue()},{alpha})"
+
+
+def chip_style(color):
+    return f"background: {rgba(color, 34)}; color: {color}; border: 1px solid {rgba(color, 85)};"
+
+
 def chip(text, color):
     l = QtWidgets.QLabel(text); l.setObjectName("chip")
-    l.setStyleSheet(f"background: {color}22; color: {color}; border: 1px solid {color}55;")
+    l.setStyleSheet(chip_style(color))
     return l
 
 
@@ -404,7 +436,9 @@ class Main(QtWidgets.QMainWindow):
         split.addWidget(self._center())
         split.addWidget(self._rightpanel())
         split.setStretchFactor(1, 1); split.setSizes([400, 920, 400])
-        v.addWidget(split, 1)
+        self.body = QtWidgets.QStackedWidget(); self.body.addWidget(split)  # page 1: AI Mode workspace, created on first use
+        self.ai = None
+        v.addWidget(self.body, 1)
         self.statusBar().showMessage("Ready")
         self.set_form(self.case)
         self.preset.setCurrentText(self.case["name"])
@@ -429,25 +463,42 @@ class Main(QtWidgets.QMainWindow):
         h = QtWidgets.QHBoxLayout(bar); h.setContentsMargins(16, 8, 16, 8); h.setSpacing(10)
         logo = QtWidgets.QLabel(); logo.setPixmap(icon("logo", size=28).pixmap(28, 28)); h.addWidget(logo)
         t = QtWidgets.QVBoxLayout(); t.setSpacing(0)
-        a = QtWidgets.QLabel("NeuroSim"); a.setObjectName("brand"); b = QtWidgets.QLabel("CFD workbench · FluidX3D core"); b.setObjectName("brandSub")
-        t.addWidget(a); t.addWidget(b); h.addLayout(t)
-        h.addSpacing(18)
+        a = QtWidgets.QLabel("NeuroSim"); a.setObjectName("brand"); self.brand_sub = QtWidgets.QLabel("CFD workbench · FluidX3D core"); self.brand_sub.setObjectName("brandSub")
+        t.addWidget(a); t.addWidget(self.brand_sub); h.addLayout(t)
+        h.addSpacing(14)
+        self.ai_btn = self._btn("AI Mode", None, lambda: self.enter_ai(), "aimode", "AI Mode · Neural Surrogates & Physics Experiments")
+        self.ai_btn.setIcon(icon("neural", "#c4b5fd")); self.ai_btn.setIconSize(QtCore.QSize(18, 18))
+        self.sim_btn = self._btn("←  Simulation Mode", None, self.leave_ai, "ghost", "Back to the simulation workbench"); self.sim_btn.hide()
+        h.addWidget(self.ai_btn); h.addWidget(self.sim_btn)
+        h.addSpacing(10)
+        sim = QtWidgets.QWidget(); hs = QtWidgets.QHBoxLayout(sim); hs.setContentsMargins(0, 0, 0, 0); hs.setSpacing(10)
         self.preset = QtWidgets.QComboBox(); self.preset.addItems(list(presets.PRESETS)); self.preset.setMinimumWidth(260)
         self.preset.activated[str].connect(self.load_preset); self.preset.setToolTip("Ready-made cases")
-        h.addWidget(self.preset)
-        h.addWidget(self._btn("Open", "folder", self.open_case, "ghost", "Open a case file"))
-        h.addWidget(self._btn("Save", "save", self.save_case, "ghost", "Save this case as JSON"))
-        h.addSpacing(18)
-        h.addWidget(self._btn("Preview", "eye", self.preview, None, "Build the scene and show geometry without stepping"))
-        h.addWidget(self._btn("Run", "play", self.start_run, "primary", "Start, or continue a paused run"))
-        h.addWidget(self._btn("Pause", "pause", lambda: self.cmd("pause"), None, "Pause the solver"))
-        h.addWidget(self._btn("Stop", "stop", self.stop_run, None, "Stop the solver"))
-        self.state_chip = chip("idle", C["muted"]); h.addWidget(self.state_chip)
-        h.addStretch(1)
-        h.addWidget(self._btn("Checkpoint", "save", lambda: self.cmd("checkpoint"), "ghost", "Save the complete solver state (restartable)"))
-        h.addWidget(self._btn("Export", "export", lambda: self.cmd("export"), "ghost", "Write rho/u/T/phi fields as .npy"))
-        h.addWidget(self._btn("Snapshot", "camera", self.save_image, "ghost", "Save the 3D view as PNG"))
-        h.addWidget(self._btn("Hardware", "chip", self.hardware, "ghost", "Devices and benchmark"))
+        hs.addWidget(self.preset)
+        hs.addWidget(self._btn("Open", "folder", self.open_case, "ghost", "Open a case file"))
+        hs.addWidget(self._btn("Save", "save", self.save_case, "ghost", "Save this case as JSON"))
+        hs.addSpacing(18)
+        hs.addWidget(self._btn("Preview", "eye", self.preview, None, "Build the scene and show geometry without stepping"))
+        hs.addWidget(self._btn("Run", "play", self.start_run, "primary", "Start, or continue a paused run"))
+        hs.addWidget(self._btn("Pause", "pause", lambda: self.cmd("pause"), None, "Pause the solver"))
+        hs.addWidget(self._btn("Stop", "stop", self.stop_run, None, "Stop the solver"))
+        self.state_chip = chip("idle", C["muted"]); hs.addWidget(self.state_chip)
+        hs.addStretch(1)
+        hs.addWidget(self._btn("Checkpoint", "save", lambda: self.cmd("checkpoint"), "ghost", "Save the complete solver state (restartable)"))
+        hs.addWidget(self._btn("Export", "export", lambda: self.cmd("export"), "ghost", "Write rho/u/T/phi fields as .npy"))
+        hs.addWidget(self._btn("Snapshot", "camera", self.save_image, "ghost", "Save the 3D view as PNG"))
+        hs.addWidget(self._btn("Hardware", "chip", self.hardware, "ghost", "Devices and benchmark"))
+        h.addWidget(sim, 1); self.sim_bar = sim
+        self.ai_bar = QtWidgets.QWidget(); ha = QtWidgets.QHBoxLayout(self.ai_bar); ha.setContentsMargins(0, 0, 0, 0); ha.setSpacing(2)
+        self.ai_nav = QtWidgets.QButtonGroup(self)
+        from .ai_mode import NAV
+        for i, name in enumerate(NAV):
+            b = QtWidgets.QPushButton(name); b.setObjectName("nav"); b.setCheckable(True); b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _=False, i=i: self.nav_ai(i)); self.ai_nav.addButton(b, i); ha.addWidget(b)
+        ha.addStretch(1)
+        ha.addWidget(self._btn("Hardware", "chip", self.hardware, "ghost", "Devices and benchmark"))
+        self.ai_bar.hide(); h.addWidget(self.ai_bar, 1)
+        self.topbar = bar
         return bar
 
     def _sidebar(self):
@@ -532,6 +583,8 @@ class Main(QtWidgets.QMainWindow):
         row.addWidget(self._btn("Open", "eye", self.open_run)); row.addWidget(self._btn("Resume", "play", self.resume_run, tip="Continue from the latest checkpoint"))
         row.addWidget(self._btn("", "folder", self.open_folder, tip="Show files")); row.addWidget(self._btn("", "refresh", self.refresh_runs, tip="Refresh"))
         rl.addLayout(row)
+        b = self._btn("Use as ground truth · AI experiment", None, self.ai_from_run, "aimode", "Create an AI experiment from the selected run (or the current setup)")
+        b.setIcon(icon("neural", "#c4b5fd")); rl.addWidget(b)
         tabs.addTab(rw, "Runs")
         self.refresh_runs()
         return frame
@@ -804,7 +857,7 @@ class Main(QtWidgets.QMainWindow):
     # ------------------------------------------------------------ run control
     def _set_state(self, text, color):
         self.state_chip.setText(text)
-        self.state_chip.setStyleSheet(f"background: {color}22; color: {color}; border: 1px solid {color}55;")
+        self.state_chip.setStyleSheet(chip_style(color))
         self.view.status = (text, color); self.view.update()
 
     def _launch(self, paused, restart=None):
@@ -877,6 +930,8 @@ class Main(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------ main loop
     def tick(self):
+        if self.ai:
+            self.ai.tick()
         if self._pending:
             run, err = self._pending; self._pending = None; self._building = False; self.progress.hide()
             if err:
@@ -1004,6 +1059,8 @@ class Main(QtWidgets.QMainWindow):
                 continue
             status = "running" if self.run and self.run.dir == p else meta.get("status", "?")
             name = p.name[16:].replace("-", " ") or p.name
+            if meta.get("kind") == "ai_experiment":
+                name = "AI experiment · " + name[3:]
             it = QtWidgets.QListWidgetItem(f"{name}\n{p.name[:8]} {p.name[9:11]}:{p.name[11:13]} · {status} · {meta['derived']['cells'] / 1e6:.1f} M cells")
             it.setData(Qt.UserRole, str(p)); self.runs.addItem(it)
 
@@ -1013,7 +1070,14 @@ class Main(QtWidgets.QMainWindow):
 
     def open_run(self):
         p = self._selected_run()
-        if not p or (self.run and self.run.dir == p):
+        if p:
+            self.open_run_dir(p)
+
+    def open_run_dir(self, p):
+        from . import ai
+        if ai.is_experiment(p):
+            self.enter_ai(p); return
+        if self.run and self.run.dir == p:
             return
         self.stop_run()
         r = runner.Run(p); r.status = "stopped"
@@ -1035,6 +1099,45 @@ class Main(QtWidgets.QMainWindow):
                 self.view.set_frame(data, f["w"], f["h"])
         self._set_state("stopped", C["muted"])
         self.update_monitor()
+
+    # ------------------------------------------------------------ AI Mode (same window, reconfigured workspace)
+    def enter_ai(self, exp_dir=None):
+        if self.ai is None:
+            from .ai_mode import AIWorkspace
+            self.ai = AIWorkspace(self); self.body.addWidget(self.ai)
+        self.sim_bar.hide(); self.ai_btn.hide(); self.ai_bar.show(); self.sim_btn.show()
+        self.brand_sub.setText("AI Mode · Neural Surrogate Laboratory"); self.brand_sub.setStyleSheet("color: #c4b5fd;")
+        self.topbar.setStyleSheet("QFrame#topbar { border-bottom: 1px solid #6d4fc2; }")
+        self._fade(self.ai)
+        self.ai.refresh_list(exp_dir)
+        if exp_dir:
+            self.ai.open(Path(exp_dir))
+        elif self.ai.exp is None and self.ai.list.count():
+            self.ai.list.setCurrentRow(0)
+        self.nav_ai(self.ai.pages.currentIndex() if not exp_dir else 0)
+        self.statusBar().showMessage("AI Mode · Neural Surrogate Laboratory · a running simulation keeps running in Simulation Mode")
+
+    def leave_ai(self):
+        self.ai_bar.hide(); self.sim_btn.hide(); self.sim_bar.show(); self.ai_btn.show()
+        self.brand_sub.setText("CFD workbench · FluidX3D core"); self.brand_sub.setStyleSheet(""); self.topbar.setStyleSheet("")
+        self._fade(self.body.widget(0))
+        self.statusBar().showMessage("Simulation Mode")
+
+    def nav_ai(self, i):
+        self.ai_nav.button(i).setChecked(True)
+        self.ai.nav(i)
+
+    def _fade(self, page):
+        self.body.setCurrentWidget(page)
+        eff = QtWidgets.QGraphicsOpacityEffect(page); page.setGraphicsEffect(eff)
+        a = QtCore.QPropertyAnimation(eff, b"opacity", page); a.setDuration(180); a.setStartValue(0.0); a.setEndValue(1.0)
+        a.finished.connect(lambda: page.setGraphicsEffect(None)); a.start()
+
+    def ai_from_run(self):
+        self.enter_ai()
+        p = self._selected_run()
+        from . import ai
+        self.ai.new_experiment(p if p and not ai.is_experiment(p) else None)
 
     def resume_run(self):
         p = self._selected_run()
@@ -1138,6 +1241,8 @@ def main(case_path=None, autorun=False):
     code = app.exec_()
     if w.run:
         w.run.stop()
+    if w.ai:
+        w.ai.shutdown()
     sys.exit(code)
 
 
