@@ -4,3 +4,6 @@ build/
 *.pdb
 __pycache__/
 
+workspace/
+build_phase0_run.log
+
