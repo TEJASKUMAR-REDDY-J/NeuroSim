@@ -1,4 +1,4 @@
-# NeuroSim CFD
+# NeuroVerse CFD
 
 NeuroSim is a simulation platform built around the [FluidX3D](https://github.com/ProjectPhysX/FluidX3D) lattice Boltzmann solver: a headless runtime and CLI, experiment and provenance management, self-benchmarking, simulation analytics, and an optional learned-physics layer. The solver stays a high-performance C++/OpenCL core; the platform around it is built so that the CLI, a GUI, remote/HPC execution and notebooks all drive the same API.
 
