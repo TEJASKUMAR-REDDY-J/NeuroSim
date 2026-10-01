@@ -1,0 +1,11 @@
+device: Intel(R) UHD Graphics
+copy4   24.29 GB/s
+read4   25.99 GB/s
+triad4  24.58 GB/s
+empty kernel: 94.1 us/launch with finish, 5.4 us/launch batched
+# interleaved repeats (AC power, battery 100%, Dell power scheme), probe line then solver FP16S 160^3 / 96^3
+copy4 17.69 GB/s ; read4 19.96 GB/s | N=160 186.1 MLUPs | N=96 173.3 MLUPs
+copy4 16.99 GB/s ; read4 19.86 GB/s | N=160 200.9 MLUPs | N=96 188.7 MLUPs
+copy4 16.75 GB/s ; read4 19.61 GB/s | N=160 185.5 MLUPs | N=96 175.8 MLUPs
+# earlier standalone probe run: copy4 16.43, read4 18.87, triad4 18.36 GB/s
+# outlier standalone probe run (above, first block): copy4 24.29, read4 25.99 GB/s -- not reproduced

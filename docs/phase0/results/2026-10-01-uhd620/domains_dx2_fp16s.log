@@ -1,0 +1,3 @@
+RESULT N=64 Dx=2 cells=524288 steps=300 seconds=1.5685 mlups=100.3 bw_gbs=7.72 construct_s=2.185 init_s=0.016
+RESULT N=128 Dx=2 cells=4194304 steps=300 seconds=8.4736 mlups=148.5 bw_gbs=11.43 construct_s=2.164 init_s=0.056
+RESULT N=160 Dx=2 cells=8192000 steps=300 seconds=16.1303 mlups=152.4 bw_gbs=11.73 construct_s=2.077 init_s=0.108

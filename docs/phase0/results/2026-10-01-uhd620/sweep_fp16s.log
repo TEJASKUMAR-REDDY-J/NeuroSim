@@ -1,0 +1,8 @@
+RESULT N=32 cells=32768 steps=300 seconds=0.0876 mlups=112.2 bw_gbs=8.64 mass_dev=0.000e+00
+RESULT N=48 cells=110592 steps=300 seconds=0.2369 mlups=140.1 bw_gbs=10.78 mass_dev=0.000e+00
+RESULT N=64 cells=262144 steps=300 seconds=0.4472 mlups=175.9 bw_gbs=13.54 mass_dev=0.000e+00
+RESULT N=96 cells=884736 steps=300 seconds=1.4360 mlups=184.8 bw_gbs=14.23 mass_dev=0.000e+00
+RESULT N=128 cells=2097152 steps=300 seconds=3.6764 mlups=171.1 bw_gbs=13.18 mass_dev=0.000e+00
+RESULT N=160 cells=4096000 steps=300 seconds=6.2814 mlups=195.6 bw_gbs=15.06 mass_dev=0.000e+00
+RESULT N=192 cells=7077888 steps=300 seconds=11.1792 mlups=189.9 bw_gbs=14.63 mass_dev=0.000e+00
+RESULT N=256 cells=16777216 steps=300 seconds=33.5811 mlups=149.9 bw_gbs=11.54 mass_dev=0.000e+00

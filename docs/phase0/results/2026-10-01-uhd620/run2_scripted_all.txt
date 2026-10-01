@@ -1,0 +1,80 @@
+﻿== bwprobe
+device: Intel(R) UHD Graphics
+copy4   16.73 GB/s
+read4   19.01 GB/s
+triad4  16.94 GB/s
+empty kernel: 95.1 us/launch with finish, 7.5 us/launch batched
+device: Intel(R) UHD Graphics
+copy4   16.78 GB/s
+read4   19.13 GB/s
+triad4  16.83 GB/s
+empty kernel: 90.8 us/launch with finish, 5.5 us/launch batched
+device: Intel(R) UHD Graphics
+copy4   16.48 GB/s
+read4   18.47 GB/s
+triad4  17.01 GB/s
+empty kernel: 90.6 us/launch with finish, 5.4 us/launch batched
+== domains_dx1
+RESULT N=64 Dx=1 cells=262144 steps=300 seconds=0.4594 mlups=171.2 bw_gbs=13.18 construct_s=1.104 init_s=0.005
+RESULT N=128 Dx=1 cells=2097152 steps=300 seconds=4.2630 mlups=147.6 bw_gbs=11.36 construct_s=1.067 init_s=0.027
+RESULT N=160 Dx=1 cells=4096000 steps=300 seconds=6.5553 mlups=187.5 bw_gbs=14.43 construct_s=1.029 init_s=0.039
+== domains_dx2
+RESULT N=64 Dx=2 cells=524288 steps=300 seconds=1.5916 mlups=98.8 bw_gbs=7.61 construct_s=2.230 init_s=0.018
+RESULT N=128 Dx=2 cells=4194304 steps=300 seconds=8.4250 mlups=149.4 bw_gbs=11.50 construct_s=2.212 init_s=0.055
+RESULT N=160 Dx=2 cells=8192000 steps=300 seconds=15.8994 mlups=154.6 bw_gbs=11.90 construct_s=2.202 init_s=0.101
+== ffi_probe
+rust ffi empty kernel: 101.3 us/launch with finish, 5.5 us/launch batched
+rust ffi empty kernel: 96.3 us/launch with finish, 5.3 us/launch batched
+rust ffi empty kernel: 93.5 us/launch with finish, 5.4 us/launch batched
+== pad_0
+RESULT N=128 Dx=1 cells=2097152 steps=300 seconds=4.1917 mlups=150.1 bw_gbs=11.56 construct_s=1.095 init_s=0.029
+RESULT N=256 Dx=1 cells=16777216 steps=300 seconds=34.2166 mlups=147.1 bw_gbs=11.33 construct_s=1.168 init_s=0.189
+RESULT N=136 Dx=1 cells=2515456 steps=300 seconds=4.3839 mlups=172.1 bw_gbs=13.25 construct_s=1.071 init_s=0.024
+== pad_2112
+RESULT N=128 Dx=1 cells=2097152 steps=300 seconds=3.4877 mlups=180.4 bw_gbs=13.89 construct_s=1.119 init_s=0.022
+RESULT N=256 Dx=1 cells=16777216 steps=300 seconds=26.5707 mlups=189.4 bw_gbs=14.59 construct_s=1.065 init_s=0.159
+RESULT N=136 Dx=1 cells=2515456 steps=300 seconds=4.0944 mlups=184.3 bw_gbs=14.19 construct_s=1.071 init_s=0.025
+== pad_256
+RESULT N=128 Dx=1 cells=2097152 steps=300 seconds=4.0770 mlups=154.3 bw_gbs=11.88 construct_s=1.117 init_s=0.024
+RESULT N=256 Dx=1 cells=16777216 steps=300 seconds=32.7308 mlups=153.8 bw_gbs=11.84 construct_s=1.097 init_s=0.182
+RESULT N=136 Dx=1 cells=2515456 steps=300 seconds=4.1340 mlups=182.5 bw_gbs=14.06 construct_s=1.061 init_s=0.024
+== pad_64
+RESULT N=128 Dx=1 cells=2097152 steps=300 seconds=4.4454 mlups=141.5 bw_gbs=10.90 construct_s=1.113 init_s=0.025
+RESULT N=256 Dx=1 cells=16777216 steps=300 seconds=34.8471 mlups=144.4 bw_gbs=11.12 construct_s=1.120 init_s=0.208
+RESULT N=136 Dx=1 cells=2515456 steps=300 seconds=4.0757 mlups=185.2 bw_gbs=14.26 construct_s=1.168 init_s=0.023
+== sweep_fp16c
+RESULT N=32 Dx=1 cells=32768 steps=300 seconds=0.1640 mlups=60.0 bw_gbs=4.62 construct_s=1.390 init_s=0.003
+RESULT N=48 Dx=1 cells=110592 steps=300 seconds=0.4792 mlups=69.2 bw_gbs=5.33 construct_s=1.184 init_s=0.002
+RESULT N=64 Dx=1 cells=262144 steps=300 seconds=0.9789 mlups=80.3 bw_gbs=6.19 construct_s=1.157 init_s=0.004
+RESULT N=96 Dx=1 cells=884736 steps=300 seconds=3.2551 mlups=81.5 bw_gbs=6.28 construct_s=1.198 init_s=0.011
+RESULT N=128 Dx=1 cells=2097152 steps=300 seconds=7.2695 mlups=86.5 bw_gbs=6.66 construct_s=1.170 init_s=0.023
+RESULT N=160 Dx=1 cells=4096000 steps=300 seconds=14.2659 mlups=86.1 bw_gbs=6.63 construct_s=1.746 init_s=0.041
+RESULT N=192 Dx=1 cells=7077888 steps=300 seconds=24.6120 mlups=86.3 bw_gbs=6.64 construct_s=1.223 init_s=0.067
+RESULT N=256 Dx=1 cells=16777216 steps=300 seconds=56.6971 mlups=88.8 bw_gbs=6.84 construct_s=1.381 init_s=0.189
+== sweep_fp16s
+RESULT N=32 Dx=1 cells=32768 steps=300 seconds=0.0909 mlups=108.2 bw_gbs=8.33 construct_s=1.098 init_s=0.002
+RESULT N=48 Dx=1 cells=110592 steps=300 seconds=0.2382 mlups=139.3 bw_gbs=10.72 construct_s=1.010 init_s=0.002
+RESULT N=64 Dx=1 cells=262144 steps=300 seconds=0.4646 mlups=169.3 bw_gbs=13.04 construct_s=1.087 init_s=0.005
+RESULT N=96 Dx=1 cells=884736 steps=300 seconds=1.5035 mlups=176.5 bw_gbs=13.59 construct_s=1.023 init_s=0.009
+RESULT N=128 Dx=1 cells=2097152 steps=300 seconds=4.1483 mlups=151.7 bw_gbs=11.68 construct_s=1.105 init_s=0.022
+RESULT N=160 Dx=1 cells=4096000 steps=300 seconds=6.5976 mlups=186.3 bw_gbs=14.34 construct_s=1.067 init_s=0.039
+RESULT N=192 Dx=1 cells=7077888 steps=300 seconds=11.1995 mlups=189.6 bw_gbs=14.60 construct_s=1.146 init_s=0.077
+RESULT N=256 Dx=1 cells=16777216 steps=300 seconds=32.0797 mlups=156.9 bw_gbs=12.08 construct_s=1.093 init_s=0.182
+== sweep_fp16s_nosync
+RESULT N=32 Dx=1 cells=32768 steps=300 seconds=0.0453 mlups=216.8 bw_gbs=16.69 construct_s=1.183 init_s=0.002
+RESULT N=48 Dx=1 cells=110592 steps=300 seconds=0.1660 mlups=199.8 bw_gbs=15.39 construct_s=1.022 init_s=0.001
+RESULT N=64 Dx=1 cells=262144 steps=300 seconds=0.4339 mlups=181.3 bw_gbs=13.96 construct_s=0.976 init_s=0.005
+RESULT N=96 Dx=1 cells=884736 steps=300 seconds=1.4508 mlups=182.9 bw_gbs=14.09 construct_s=1.165 init_s=0.009
+RESULT N=128 Dx=1 cells=2097152 steps=300 seconds=4.2949 mlups=146.5 bw_gbs=11.28 construct_s=0.981 init_s=0.023
+RESULT N=160 Dx=1 cells=4096000 steps=300 seconds=6.5753 mlups=186.9 bw_gbs=14.39 construct_s=1.045 init_s=0.039
+RESULT N=192 Dx=1 cells=7077888 steps=300 seconds=11.0873 mlups=191.5 bw_gbs=14.75 construct_s=1.099 init_s=0.066
+RESULT N=256 Dx=1 cells=16777216 steps=300 seconds=35.2002 mlups=143.0 bw_gbs=11.01 construct_s=1.201 init_s=0.207
+== sweep_fp32
+RESULT N=32 Dx=1 cells=32768 steps=300 seconds=0.0924 mlups=106.4 bw_gbs=16.28 construct_s=1.153 init_s=0.003
+RESULT N=48 Dx=1 cells=110592 steps=300 seconds=0.3607 mlups=92.0 bw_gbs=14.07 construct_s=1.029 init_s=0.002
+RESULT N=64 Dx=1 cells=262144 steps=300 seconds=0.8481 mlups=92.7 bw_gbs=14.19 construct_s=1.042 init_s=0.007
+RESULT N=96 Dx=1 cells=884736 steps=300 seconds=2.6331 mlups=100.8 bw_gbs=15.42 construct_s=1.203 init_s=0.026
+RESULT N=128 Dx=1 cells=2097152 steps=300 seconds=7.5315 mlups=83.5 bw_gbs=12.78 construct_s=1.151 init_s=0.030
+RESULT N=160 Dx=1 cells=4096000 steps=300 seconds=12.7130 mlups=96.7 bw_gbs=14.79 construct_s=1.606 init_s=0.072
+RESULT N=192 Dx=1 cells=7077888 steps=300 seconds=20.5883 mlups=103.1 bw_gbs=15.78 construct_s=1.181 init_s=0.105
+RESULT N=256 Dx=1 cells=16777216 steps=300 seconds=47.0568 mlups=107.0 bw_gbs=16.36 construct_s=1.059 init_s=0.312

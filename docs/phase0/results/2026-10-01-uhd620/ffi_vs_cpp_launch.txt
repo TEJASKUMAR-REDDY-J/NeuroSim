@@ -1,0 +1,6 @@
+rust ffi empty kernel: 91.7 us/launch with finish, 5.4 us/launch batched
+c++ empty kernel: 102.1 us/launch with finish, 7.0 us/launch batched
+rust ffi empty kernel: 94.8 us/launch with finish, 5.4 us/launch batched
+c++ empty kernel: 97.7 us/launch with finish, 7.5 us/launch batched
+rust ffi empty kernel: 93.8 us/launch with finish, 5.5 us/launch batched
+c++ empty kernel: 102.3 us/launch with finish, 6.3 us/launch batched

@@ -1,0 +1,42 @@
+diff --git a/src/kernel.cpp b/src/kernel.cpp
+index d9d5979..27f15b9 100644
+--- a/src/kernel.cpp
++++ b/src/kernel.cpp
+@@ -858,7 +858,7 @@ string opencl_c_container() { return R( // ########################## begin of O
+ }
+ 
+ )+R(ulong index_f(const uxx n, const uint i) { // 64-bit indexing for DDFs
+-	return (ulong)i*def_N+(ulong)n; // SoA (>2x faster on GPUs)
++	return (ulong)i*def_Nf+(ulong)n; // SoA (>2x faster on GPUs)
+ }
+ )+R(float c(const uint i) { // avoid constant keyword by encapsulating data in function which gets inlined by compiler
+ 	const float c[3u*def_velocity_set] = {
+diff --git a/src/lbm.cpp b/src/lbm.cpp
+index 02edfe3..4632fe0 100644
+--- a/src/lbm.cpp
++++ b/src/lbm.cpp
+@@ -3,6 +3,7 @@
+ 
+ 
+ Units units; // for unit conversion
++static ulong ddf_pad() { const char* e = getenv("NS_PAD"); return e ? (ulong)atoll(e) : 0ull; } // NeuroSim experiment: DDF stride padding in elements
+ 
+ #if defined(D2Q9)
+ const uint velocity_set = 9u;
+@@ -120,7 +121,7 @@ LBM_Domain::LBM_Domain(const Device_Info& device_info, const uint Nx, const uint
+ 
+ void LBM_Domain::allocate(Device& device) {
+ 	const ulong N = get_N();
+-	fi = Memory<fpxx>(device, N, velocity_set, false);
++	fi = Memory<fpxx>(device, N+ddf_pad(), velocity_set, false); // NeuroSim experiment: padded DDF stride
+ 	rho = Memory<float>(device, N, 1u, true, true, 1.0f);
+ 	u = Memory<float>(device, N, 3u);
+ 	flags = Memory<uchar>(device, N);
+@@ -332,6 +333,7 @@ void LBM_Domain::enqueue_unvoxelize_mesh_on_device(const Mesh* mesh, const uchar
+ }
+ 
+ string LBM_Domain::device_defines(const Device_Info& device_info) const { return
++	"\n	#define def_Nf "+to_string(get_N()+ddf_pad())+"ul" // NeuroSim experiment: padded DDF stride
+ 	"\n	#define def_Nx "+to_string(Nx)+"u"
+ 	"\n	#define def_Ny "+to_string(Ny)+"u"
+ 	"\n	#define def_Nz "+to_string(Nz)+"u"

@@ -1,0 +1,5 @@
+# FP16S, patch 0002 (NS_PAD = DDF stride padding in elements), 300 steps, sizes 128,256,136
+pad=0    N=128 148.1 | N=256 142.1 | N=136 180.8 MLUPs
+pad=64   N=128 139.5 | N=256 144.6 | N=136 185.9 MLUPs
+pad=256  N=128 155.2 | N=256 152.6 | N=136 177.0 MLUPs
+pad=2112 N=128 176.4 | N=256 190.2 | N=136 184.1 MLUPs
