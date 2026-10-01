@@ -90,7 +90,7 @@ def solver_variant(c):
     s = c["solver"]
     precision = recommended_precision() if s["precision"] == "auto" else s["precision"]
     lattice = ("D2Q9" if c["domain"][2] == 1 else "D3Q19") if s["lattice"] == "auto" else s["lattice"]
-    return build.variant(precision, lattice, s["collision"], features(c))
+    return build.variant(precision, lattice, s["collision"], features(c), frame=c["view"].get("resolution", (1280, 720)))
 
 
 def resolve_model(model):
@@ -179,8 +179,8 @@ def prepare(case, run_dir):
         re = float(c["flow"]["re"])
         nu = u * L / re
     tau = 3 * nu + 0.5
-    if tau < 0.5001:
-        raise ValueError(f"viscosity too low for this resolution (tau={tau:.5f}); lower Re, raise u or refine the grid")
+    if tau <= 0.5 or (tau < 0.5001 and not c["les"]):  # very high Re is only stable with the LES model (as in FluidX3D's aircraft setups)
+        raise ValueError(f"viscosity too low for this resolution (tau={tau:.6f}); enable LES, lower Re, raise u or refine the grid")
     if isinstance(c.get("reference_area"), (int, float)):
         ref_area = float(c["reference_area"])
     derived.update(nu=nu, re=re, length=L, tau=tau, ref_area=ref_area or None, cells=N[0] * N[1] * N[2], objects=objects)

@@ -142,7 +142,11 @@ def frontal_area(tris, axis, resolution=1.0):
     hi = np.ceil(p.reshape(-1, 2).max(0)) + 1
     nx, ny = ((hi - lo) / resolution).astype(int) + 1
     mask = np.zeros((nx, ny), bool)
-    for tri in (p - lo) / resolution:
+    q = (p - lo) / resolution
+    small = (q.max(1) - q.min(1)).max(1) < 1.0  # sub-cell triangles: mark the cell under the centroid (vectorized)
+    cen = np.clip(np.floor(q[small].mean(1)).astype(int), 0, [nx - 1, ny - 1])
+    mask[cen[:, 0], cen[:, 1]] = True
+    for tri in q[~small]:
         x0, y0 = np.floor(tri.min(0)).astype(int)
         x1, y1 = np.ceil(tri.max(0)).astype(int)
         gx, gy = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5, indexing="ij")

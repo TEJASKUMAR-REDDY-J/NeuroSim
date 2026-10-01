@@ -20,7 +20,7 @@
 static double now_s() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 static string f2s(const double v) { char b[32]; snprintf(b, sizeof(b), "%.7g", v); return std::isfinite(v) ? string(b) : string("null"); }
 static string vec3(const float3& v) { return "["+f2s(v.x)+","+f2s(v.y)+","+f2s(v.z)+"]"; }
-static string quoted(const string& s) { string r = "\""; for(char c : s) { if(c=='"'||c=='\\') r += '\\'; r += c; } return r+"\""; }
+static string jquote(const string& s) { string r = "\""; for(char c : s) { if(c=='"'||c=='\\') r += '\\'; r += c; } return r+"\""; }
 
 // ---------------------------------------------------------------- telemetry and commands
 static std::ofstream telemetry;
@@ -153,11 +153,18 @@ kernel void ns_cloud_tonemap(global uint* acc, global int* out, const uint W, co
 	acc[3u*id] = acc[3u*id+1u] = acc[3u*id+2u] = 0u;
 	const float3 c = 255.0f*((float3)(1.0f)-exp(-a));
 	out[id] = (int)c.x<<16|(int)c.y<<8|(int)c.z;
+}
+// deterministic sum of the force field over marked object cells (fixed order, no float atomics)
+kernel void ns_force(const global float* F, const global uchar* flags, const uchar marker, const ulong N, global float* partial) {
+	const ulong id = get_global_id(0), stride = get_global_size(0);
+	float fx=0.0f, fy=0.0f, fz=0.0f;
+	for(ulong n=id; n<N; n+=stride) if(flags[n]==marker) { fx += F[n]; fy += F[N+n]; fz += F[2ul*N+n]; }
+	partial[3ul*id] = fx; partial[3ul*id+1ul] = fy; partial[3ul*id+2ul] = fz;
 })CLC";
 
 struct NsKernels {
 	cl::CommandQueue queue;
-	cl::Kernel stats, slice, cloud, cloud_tonemap;
+	cl::Kernel stats, slice, cloud, cloud_tonemap, force;
 	cl::Buffer cloud_acc, cloud_rgb;
 	cl::Buffer partial, slice_out;
 	uint stats_items = 16384u;
@@ -170,6 +177,7 @@ struct NsKernels {
 		if(program.build({ device.info.cl_device }, "-cl-std=CL1.2")) print_error("NeuroSim kernels failed to compile: "+program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device.info.cl_device));
 		stats = cl::Kernel(program, "ns_stats");
 		slice = cl::Kernel(program, "ns_slice");
+		force = cl::Kernel(program, "ns_force");
 		cloud = cl::Kernel(program, "ns_cloud");
 		cloud_tonemap = cl::Kernel(program, "ns_cloud_tonemap");
 		cloud_acc = cl::Buffer(context, CL_MEM_READ_WRITE, (size_t)camera.width*camera.height*3u*sizeof(uint));
@@ -194,8 +202,8 @@ int main(int argc, char* argv[]) {
 		string s = "[";
 		for(uint i=0u; i<(uint)devices.size(); i++) {
 			const Device_Info& d = devices[i];
-			s += string(i ? "," : "")+"{\"id\":"+to_string(d.id)+",\"name\":"+quoted(d.name)+",\"vendor\":"+quoted(d.vendor)+",\"driver\":"+quoted(d.driver_version)
-				+",\"opencl_c\":"+quoted(d.opencl_c_version)+",\"memory_mb\":"+to_string(d.memory)+",\"max_buffer_mb\":"+to_string(d.max_global_buffer)
+			s += string(i ? "," : "")+"{\"id\":"+to_string(d.id)+",\"name\":"+jquote(d.name)+",\"vendor\":"+jquote(d.vendor)+",\"driver\":"+jquote(d.driver_version)
+				+",\"opencl_c\":"+jquote(d.opencl_c_version)+",\"memory_mb\":"+to_string(d.memory)+",\"max_buffer_mb\":"+to_string(d.max_global_buffer)
 				+",\"compute_units\":"+to_string(d.compute_units)+",\"clock_mhz\":"+to_string(d.clock_frequency)+",\"tflops\":"+f2s(d.tflops)
 				+",\"is_gpu\":"+(d.is_gpu?"true":"false")+",\"uses_ram\":"+(d.uses_ram?"true":"false")+",\"fp16\":"+(d.is_fp16_capable?"true":"false")+",\"fp64\":"+(d.is_fp64_capable?"true":"false")+"}";
 		}
@@ -217,7 +225,7 @@ int main(int argc, char* argv[]) {
 		k.setArg(0, a); k.setArg(1, b);
 		double best = 1E30;
 		for(uint r=0u; r<8u; r++) { const double t0 = now_s(); q.enqueueNDRangeKernel(k, cl::NullRange, cl::NDRange(bytes/16u), cl::NDRange(64u)); q.finish(); if(r>0u) best = fmin(best, now_s()-t0); }
-		printf("{\"device\":%s,\"copy_gbs\":%s}\n", quoted(d.name).c_str(), f2s(2.0*(double)bytes/best*1E-9).c_str());
+		printf("{\"device\":%s,\"copy_gbs\":%s}\n", jquote(d.name).c_str(), f2s(2.0*(double)bytes/best*1E-9).c_str());
 		return 0;
 	}
 	if(argc<3) { fprintf(stderr, "usage: neurosim-fx <case.cfg> <run_dir> | --devices | --probe [device]\n"); return 2; }
@@ -326,7 +334,7 @@ int main(int argc, char* argv[]) {
 	{ const vector<float> cam = cfg.value<vector<float>>("camera", vector<float>{ 30.0f, 20.0f, 60.0f, 1.0f }); lbm.graphics.set_camera_centered(cam[0], cam[1], cam[2], cam[3]); }
 
 	// ---- run control
-	const ulong steps = cfg.value<ulong>("steps", 0ull); // 0 = until stopped
+	ulong steps = cfg.value<ulong>("steps", 0ull); // 0 = until stopped; can be changed live
 	ulong telemetry_every = max(1ull, cfg.value<ulong>("telemetry_every", 100ull));
 	ulong slice_every = cfg.value<ulong>("slice_every", 200ull);
 	ulong checkpoint_every = cfg.value<ulong>("checkpoint_every", 0ull);
@@ -359,7 +367,7 @@ int main(int argc, char* argv[]) {
 	auto state_io = [&](const string& path, const bool save) {
 		if(save) lbm.update_fields();
 		std::fstream file(path, (save ? std::ios::out : std::ios::in)|std::ios::binary);
-		if(!file) { emit("{\"type\":\"error\",\"message\":"+quoted("cannot open checkpoint "+path)+"}"); return false; }
+		if(!file) { emit("{\"type\":\"error\",\"message\":"+jquote("cannot open checkpoint "+path)+"}"); return false; }
 		ulong header[6] = { 0x4B43534Eull, Nx, Ny, Nz, lbm.get_t(), sizeof(fpxx)|((ulong)atoll(pad.c_str())<<8) };
 		if(save) file.write((char*)header, sizeof(header));
 		else {
@@ -384,29 +392,33 @@ int main(int argc, char* argv[]) {
 		return true;
 	};
 	const string restart = cfg.value<string>("restart", "");
-	if(restart!="") { if(state_io(restart, false)) emit("{\"type\":\"restart\",\"t\":"+to_string(lbm.get_t())+",\"file\":"+quoted(restart)+"}"); }
+	if(restart!="" && state_io(restart, false)) {
+		for(Object* o : rotating) o->mesh->rotate(float3x3(normalize(o->omega), length(o->omega)*(float)lbm.get_t())); // geometry angle at the checkpoint time
+		emit("{\"type\":\"restart\",\"t\":"+to_string(lbm.get_t())+",\"file\":"+jquote(restart)+"}");
+	}
 
 	// ---- outputs
-	auto write_npy = [&](const string& name, const float* data, const uint components) {
+	auto write_npy = [&](const string& name, const void* data, const uint components, const string descr="<f4", const uint bytes=4u) {
 		const string path = run_dir+"fields/"+name+"_"+to_string(lbm.get_t())+".npy";
 		create_folder(path);
-		string header = "{'descr': '<f4', 'fortran_order': False, 'shape': ("+(components>1u ? to_string(components)+", " : string(""))+to_string(Nz)+", "+to_string(Ny)+", "+to_string(Nx)+"), }";
+		string header = "{'descr': '"+descr+"', 'fortran_order': False, 'shape': ("+(components>1u ? to_string(components)+", " : string(""))+to_string(Nz)+", "+to_string(Ny)+", "+to_string(Nx)+"), }";
 		while((10u+header.length()+1u)%64u!=0u) header += ' ';
 		header += '\n';
 		std::ofstream file(path, std::ios::out|std::ios::binary);
 		const unsigned short hl = (unsigned short)header.length();
 		file.write("\x93NUMPY\x01\x00", 8); file.write((const char*)&hl, 2); file.write(header.c_str(), hl);
-		file.write((const char*)data, (std::streamsize)((ulong)components*lbm.get_N()*sizeof(float)));
+		file.write((const char*)data, (std::streamsize)((ulong)components*lbm.get_N()*bytes));
 		return path;
 	};
 	auto export_fields = [&]() {
 		lbm.rho.read_from_device(); lbm.u.read_from_device();
-		string files = quoted(write_npy("rho", dom.rho.data(), 1u))+","+quoted(write_npy("u", dom.u.data(), 3u));
+		lbm.flags.read_from_device();
+		string files = jquote(write_npy("rho", dom.rho.data(), 1u))+","+jquote(write_npy("u", dom.u.data(), 3u))+","+jquote(write_npy("flags", dom.flags.data(), 1u, "|u1", 1u));
 #ifdef TEMPERATURE
-		lbm.T.read_from_device(); files += ","+quoted(write_npy("T", dom.T.data(), 1u));
+		lbm.T.read_from_device(); files += ","+jquote(write_npy("T", dom.T.data(), 1u));
 #endif // TEMPERATURE
 #ifdef SURFACE
-		lbm.phi.read_from_device(); files += ","+quoted(write_npy("phi", dom.phi.data(), 1u));
+		lbm.phi.read_from_device(); files += ","+jquote(write_npy("phi", dom.phi.data(), 1u));
 #endif // SURFACE
 		emit("{\"type\":\"export\",\"t\":"+to_string(lbm.get_t())+",\"files\":["+files+"]}");
 	};
@@ -432,7 +444,7 @@ int main(int argc, char* argv[]) {
 		for(float v : host) if(std::isfinite(v)) { vmin = fmin(vmin, v); vmax = fmax(vmax, v); }
 		const string name = "slice_"+to_string(slice_seq++%2u)+".f32";
 		std::ofstream(run_dir+"live/"+name, std::ios::out|std::ios::binary).write((const char*)host.data(), (std::streamsize)bytes);
-		emit("{\"type\":\"slice\",\"t\":"+to_string(lbm.get_t())+",\"file\":"+quoted(name)+",\"w\":"+to_string(W)+",\"h\":"+to_string(H)+",\"step\":"+to_string(step)
+		emit("{\"type\":\"slice\",\"t\":"+to_string(lbm.get_t())+",\"file\":"+jquote(name)+",\"w\":"+to_string(W)+",\"h\":"+to_string(H)+",\"step\":"+to_string(step)
 			+",\"axis\":"+to_string(slice_axis)+",\"pos\":"+to_string(pos)+",\"field\":"+to_string(slice_field)+",\"min\":"+f2s(vmin)+",\"max\":"+f2s(vmax)+"}");
 		slice_s += now_s()-s0;
 	};
@@ -476,7 +488,7 @@ int main(int argc, char* argv[]) {
 		std::ofstream(run_dir+"live/"+name, std::ios::out|std::ios::binary).write((const char*)bitmap, (std::streamsize)camera.width*camera.height*4u);
 		last_render_dt = now_s()-r0;
 		render_s += last_render_dt;
-		emit("{\"type\":\"frame\",\"t\":"+to_string(lbm.get_t())+",\"seq\":"+to_string(frame_seq)+",\"file\":"+quoted(name)+",\"w\":"+to_string(camera.width)+",\"h\":"+to_string(camera.height)+"}");
+		emit("{\"type\":\"frame\",\"t\":"+to_string(lbm.get_t())+",\"seq\":"+to_string(frame_seq)+",\"file\":"+jquote(name)+",\"w\":"+to_string(camera.width)+",\"h\":"+to_string(camera.height)+"}");
 		frame_seq++;
 	};	auto stats = [&](const double mlups, const double sps, const double wall) {
 		lbm.update_fields();
@@ -496,18 +508,28 @@ int main(int argc, char* argv[]) {
 		if(has_T) s += ",\"T_mean\":"+f2s(se*ci);
 		if(has_phi) s += ",\"liquid_volume\":"+f2s(se);
 #ifdef FORCE_FIELD
-		if(track_forces) s += ",\"force\":"+vec3(lbm.object_force(TYPE_S|TYPE_X));
+		if(track_forces) { // deterministic reduction instead of FluidX3D's float-atomic object_force()
+			lbm.update_force_field();
+			cl::Kernel& kf = ns.force;
+			kf.setArg(0, dom.F.get_cl_buffer()); kf.setArg(1, dom.flags.get_cl_buffer()); kf.setArg(2, (uchar)(TYPE_S|TYPE_X)); kf.setArg(3, N); kf.setArg(4, ns.partial);
+			ns.queue.enqueueNDRangeKernel(kf, cl::NullRange, cl::NDRange(ns.stats_items), cl::NDRange(64u));
+			vector<float> pf((size_t)ns.stats_items*3u);
+			ns.queue.enqueueReadBuffer(ns.partial, CL_TRUE, 0u, pf.size()*sizeof(float), pf.data());
+			double F3[3] = { 0.0, 0.0, 0.0 };
+			for(uint i=0u; i<ns.stats_items; i++) for(uint d=0u; d<3u; d++) F3[d] += pf[3u*i+d];
+			s += ",\"force\":"+vec3(float3((float)F3[0], (float)F3[1], (float)F3[2]));
+		}
 #endif // FORCE_FIELD
 		emit(s+"}");
 	};
 	auto checkpoint = [&]() {
 		const string path = run_dir+"checkpoints/t"+to_string(lbm.get_t())+".nsck";
 		create_folder(path);
-		if(state_io(path, true)) emit("{\"type\":\"checkpoint\",\"t\":"+to_string(lbm.get_t())+",\"file\":"+quoted(path)+"}");
+		if(state_io(path, true)) emit("{\"type\":\"checkpoint\",\"t\":"+to_string(lbm.get_t())+",\"file\":"+jquote(path)+"}");
 	};
 
 	create_folder(run_dir+"live/x");
-	emit("{\"type\":\"start\",\"N\":["+to_string(Nx)+","+to_string(Ny)+","+to_string(Nz)+"],\"device\":"+quoted(device.info.name)+",\"memory_mb\":"+to_string(device.info.memory_used)
+	emit("{\"type\":\"start\",\"N\":["+to_string(Nx)+","+to_string(Ny)+","+to_string(Nz)+"],\"device\":"+jquote(device.info.name)+",\"memory_mb\":"+to_string(device.info.memory_used)
 		+",\"bytes_per_cell\":"+to_string(bytes_per_cell_device())+",\"bandwidth_bytes_per_cell\":"+to_string(bandwidth_bytes_per_cell_device())+",\"setup_s\":"+f2s(now_s()-t_build0)+",\"t\":"+to_string(lbm.get_t())+"}");
 	if(const cl_int e = ns.queue.finish()) { emit("{\"type\":\"error\",\"message\":\"OpenCL device error "+to_string(e)+" during setup\"}"); _exit(3); }
 	thread(read_stdin).detach();
@@ -516,20 +538,23 @@ int main(int argc, char* argv[]) {
 	bool paused = cfg.value<bool>("start_paused", false), stop = false;
 	double frame_fps = cfg.value<float>("frame_fps", 8.0f), last_frame = now_s();
 	double render_budget = cfg.value<float>("render_budget", 0.2f); // max share of wall time spent on live frames
-	ulong next_tel = lbm.get_t()+telemetry_every, next_slice = slice_every ? lbm.get_t()+slice_every : max_ulong, next_ckpt = checkpoint_every ? lbm.get_t()+checkpoint_every : max_ulong;
+	auto next_multiple = [&](const ulong every) { return every ? (lbm.get_t()/every+1ull)*every : max_ulong; }; // schedules on fixed multiples: interaction and restarts never shift them
+	ulong next_tel = next_multiple(telemetry_every), next_slice = next_multiple(slice_every), next_ckpt = next_multiple(checkpoint_every);
 	ulong t_mark = lbm.get_t(); double clock_mark = now_s(), compute_s = 0.0, steps_per_s = 0.0;
 	while(!stop) {
 		string line;
 		while(next_command(line)) {
 			std::istringstream in(line); string cmd; in >> cmd;
+			emit("{\"type\":\"cmd\",\"t\":"+to_string(lbm.get_t())+",\"cmd\":"+jquote(line)+"}"); // interaction log (provenance)
 			if(cmd=="pause") paused = true;
 			else if(cmd=="resume") paused = false;
 			else if(cmd=="stop") stop = true;
 			else if(cmd=="cam") { float rx=30, ry=20, fov=60, zoom=1; in >> rx >> ry >> fov >> zoom; lbm.graphics.set_camera_centered(rx, ry, fov, zoom); write_frame(); last_frame = now_s(); }
 			else if(cmd=="vis") { int m=0, fm=0, sm=0; in >> m >> fm >> sm; lbm.graphics.visualization_modes = m; lbm.graphics.field_mode = fm; lbm.graphics.slice_mode = sm; in >> lbm.graphics.slice_x >> lbm.graphics.slice_y >> lbm.graphics.slice_z; write_frame(); }
 			else if(cmd=="slice") { in >> slice_axis >> slice_pos >> slice_field; slice_axis = min(slice_axis, 2u); write_slice(); }
-			else if(cmd=="rates") { in >> telemetry_every >> slice_every >> frame_fps; telemetry_every = max(1ull, telemetry_every); next_tel = lbm.get_t()+telemetry_every; next_slice = slice_every ? lbm.get_t()+slice_every : max_ulong; }
+			else if(cmd=="rates") { in >> telemetry_every >> slice_every >> frame_fps; telemetry_every = max(1ull, telemetry_every); next_tel = next_multiple(telemetry_every); next_slice = next_multiple(slice_every); }
 			else if(cmd=="budget") { in >> render_budget; }
+			else if(cmd=="steps") { in >> steps; } // new stop time (0 = never); resume to continue a finished run
 			else if(cmd=="cloud") { int on=0; in >> on >> cloud_field >> cloud_gain >> cloud_density; cloud_on = on!=0; write_frame(); last_frame = now_s(); }
 			else if(cmd=="frame") write_frame();
 			else if(cmd=="export") export_fields();
@@ -547,7 +572,7 @@ int main(int argc, char* argv[]) {
 		ulong chunk = min(min(next_tel, next_slice), next_ckpt)-lbm.get_t();
 		chunk = min(chunk, max(1ull, (ulong)(steps_per_s*budget)));
 		if(steps) chunk = min(chunk, steps-lbm.get_t());
-		if(!rotating.empty()) chunk = min(chunk, (ulong)rot_dt);
+		if(!rotating.empty()) chunk = min(chunk, (ulong)rot_dt-lbm.get_t()%(ulong)rot_dt); // geometry updates only at multiples of rotation_dt, independent of chunking
 		chunk = max(chunk, 1ull);
 		const double c0 = now_s();
 		lbm.run(chunk); // asynchronous enqueue (patch 0001)
@@ -558,8 +583,8 @@ int main(int argc, char* argv[]) {
 		const double dc = now_s()-c0;
 		compute_s += dc;
 		steps_per_s = (double)chunk/fmax(dc, 1E-6);
-		for(Object* o : rotating) { // rotate geometry and re-voxelize with matching surface velocity
-			o->mesh->rotate(float3x3(normalize(o->omega), length(o->omega)*(float)chunk));
+		if(lbm.get_t()%(ulong)rot_dt==0ull) for(Object* o : rotating) { // rotate geometry and re-voxelize with matching surface velocity
+			o->mesh->rotate(float3x3(normalize(o->omega), length(o->omega)*(float)rot_dt));
 			lbm.voxelize_mesh_on_device(o->mesh, o->flag, o->center, float3(0.0f), o->omega);
 		}
 		const ulong t = lbm.get_t();
@@ -567,11 +592,11 @@ int main(int argc, char* argv[]) {
 			const double wall = now_s()-clock_mark, steps_done = (double)(t-t_mark);
 			stats(compute_s>0.0 ? (double)lbm.get_N()*steps_done/compute_s*1E-6 : 0.0, wall>0.0 ? steps_done/wall : 0.0, wall);
 			t_mark = t; clock_mark = now_s(); compute_s = 0.0;
-			next_tel = t+telemetry_every;
+			next_tel = next_multiple(telemetry_every);
 		}
-		if(t>=next_slice) { write_slice(); next_slice = slice_every ? t+slice_every : max_ulong; }
+		if(t>=next_slice) { write_slice(); next_slice = next_multiple(slice_every); }
 		if(frame_fps>0.0 && now_s()-last_frame>=fmax(1.0/frame_fps, last_render_dt/fmax(render_budget, 0.01))) { write_frame(); last_frame = now_s(); }
-		if(t>=next_ckpt) { checkpoint(); next_ckpt = t+checkpoint_every; }
+		if(t>=next_ckpt) { checkpoint(); next_ckpt = next_multiple(checkpoint_every); }
 	}	emit("{\"type\":\"stopped\",\"t\":"+to_string(lbm.get_t())+"}");
 	telemetry.close();
 	_exit(0); // skip static destructors of detached threads

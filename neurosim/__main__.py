@@ -8,7 +8,9 @@ import time
 def main():
     ap = argparse.ArgumentParser(prog="neurosim")
     sub = ap.add_subparsers(dest="cmd")
-    sub.add_parser("gui", help="desktop workbench (default)")
+    g = sub.add_parser("gui", help="desktop workbench (default)")
+    g.add_argument("--case", help="open this case file")
+    g.add_argument("--run", action="store_true", help="start the case immediately")
     r = sub.add_parser("run", help="run a case file headless")
     r.add_argument("case")
     r.add_argument("--steps", type=int)
@@ -17,7 +19,7 @@ def main():
     a = ap.parse_args()
     if a.cmd in (None, "gui"):
         from .app import main as gui
-        gui()
+        gui(getattr(a, "case", None), getattr(a, "run", False))
     elif a.cmd == "devices":
         from . import runner
         print(json.dumps(runner.devices(), indent=1))

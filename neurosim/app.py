@@ -812,10 +812,6 @@ class Main(QtWidgets.QMainWindow):
             return
         self.stop_run()
         case = self.get_form()
-        try:
-            run = runner.Run.create(case, restart=restart)
-        except Exception as e:
-            QtWidgets.QMessageBox.warning(self, "Case error", str(e)); return
         self._building = True
         self.progress.show()
         self._set_state("preparing", C["warn"])
@@ -823,8 +819,10 @@ class Main(QtWidgets.QMainWindow):
         self.view.hint = "Preparing solver…"; self.view.image = None; self.view.hud = []; self.view.update()
         self._series = {}; self.slice.values = None
 
-        def work():
+        def work():  # geometry placement and compilation can take a while: keep the UI responsive
+            run = None
             try:
+                run = runner.Run.create(case, restart=restart)
                 run.start(log=lambda s: None, paused=paused)
                 self._pending = (run, None)
             except Exception as e:
@@ -835,8 +833,14 @@ class Main(QtWidgets.QMainWindow):
         self._launch(paused=True)
 
     def start_run(self):
-        if self.run and self.run.status == "paused" and self.run.proc and self.run.proc.poll() is None and self.get_form() == self._run_case:
-            self.cmd("resume"); return
+        if self._building:
+            return
+        if self.run and self.run.proc and self.run.proc.poll() is None:  # never discard a live run by pressing Run
+            if self.run.status == "paused":
+                self.cmd("resume")
+            else:
+                self.statusBar().showMessage("Already running. Stop it first to run a changed case.")
+            return
         self._launch(paused=False)
 
     def stop_run(self):
@@ -1115,15 +1119,22 @@ def dark_title_bar(widget):
         pass
 
 
-def main():
+def main(case_path=None, autorun=False):
     QtWidgets.QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QtWidgets.QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName("NeuroSim")
     style_app(app)
     w = Main()
+    if case_path:
+        w.case = case_mod.normalize(json.loads(Path(case_path).read_text())); w.set_form(w.case)
+        if w.preset.findText(w.case.get("name", "")) < 0:
+            w.preset.addItem(w.case["name"])
+        w.preset.setCurrentText(w.case["name"])
     dark_title_bar(w)
-    w.show()
+    w.showMaximized()
+    if autorun:
+        QtCore.QTimer.singleShot(500, w.start_run)
     code = app.exec_()
     if w.run:
         w.run.stop()
