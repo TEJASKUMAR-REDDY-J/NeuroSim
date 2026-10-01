@@ -1,0 +1,36 @@
+diff --git a/src/kernel.cpp b/src/kernel.cpp
+index d9d5979..16d0d38 100644
+--- a/src/kernel.cpp
++++ b/src/kernel.cpp
+@@ -147,6 +147,9 @@ string opencl_c_container() { return R( // ########################## begin of O
+ )+R(int colorscale_twocolor(float x) { // coloring scheme (float [0, 1] -> int color)
+ 	return x>0.5f ? color_mix(0xFFAA00, def_background_color, clamp(2.0f*x-1.0f, 0.0f, 1.0f)) : color_mix(def_background_color, 0x0080FF, clamp(2.0f*x, 0.0f, 1.0f)); // red - gray - blue
+ }
++)+R(int colorscale_solid_force(float x) { // NeuroSim: force coloring of solids with a light-gray neutral color, so unloaded surfaces stay visible on any background
++	return x>0.5f ? color_mix(0xFFAA00, 0xDFDFDF, clamp(2.0f*x-1.0f, 0.0f, 1.0f)) : color_mix(0xDFDFDF, 0x0080FF, clamp(2.0f*x, 0.0f, 1.0f)); // orange - gray - blue
++}
+ )+R(int shading(const int c, const float3 p, const float3 normal, const float* camera_cache) { // calculate flat shading color of triangle
+ )+"#ifndef GRAPHICS_TRANSPARENCY"+R(
+ 	const float zoom = camera_cache[ 0]; // fetch camera parameters (rotation matrix, camera position, etc.)
+@@ -2494,7 +2497,7 @@ string opencl_c_container() { return R( // ########################## begin of O
+ 	if(!(not_xp||not_zm)) draw_line(p3, p6, c, camera_cache, bitmap, zbuffer);
+ 	if(!(not_xm||not_yp)) draw_line(p4, p7, c, camera_cache, bitmap, zbuffer);
+ 	if(!(not_xp||not_ym)) draw_line(p5, p6, c, camera_cache, bitmap, zbuffer);
+-)+"#ifdef FORCE_FIELD"+R(
++)+"#if defined(FORCE_FIELD)&&defined(NEUROSIM_FORCE_VECTORS)"+R( // NeuroSim: per-cell force vectors off by default (they clutter large walls)
+ 	if(flagsn_bo==TYPE_S) {
+ 		const float3 Fn = def_scale_F*load3(F, n);
+ 		const float Fnl = length(Fn);
+@@ -2597,9 +2600,9 @@ string opencl_c_container() { return R( // ########################## begin of O
+ 		int c0=0xDFDFDF, c1=0xDFDFDF, c2=0xDFDFDF;
+ )+"#ifdef FORCE_FIELD"+R(
+ 		const float3 normal = normalize(cross(p1-p0, p2-p0));
+-		c0 = colorscale_twocolor(0.5f+def_scale_F*dot(trilinear3(p0, Fj), normal));
+-		c1 = colorscale_twocolor(0.5f+def_scale_F*dot(trilinear3(p1, Fj), normal));
+-		c2 = colorscale_twocolor(0.5f+def_scale_F*dot(trilinear3(p2, Fj), normal));
++		c0 = colorscale_solid_force(0.5f+def_scale_F*dot(trilinear3(p0, Fj), normal));
++		c1 = colorscale_solid_force(0.5f+def_scale_F*dot(trilinear3(p1, Fj), normal));
++		c2 = colorscale_solid_force(0.5f+def_scale_F*dot(trilinear3(p2, Fj), normal));
+ )+"#else"+R( // FORCE_FIELD
+ 		const float3 normal = cross(p1-p0, p2-p0); // no normalize needed for shading()
+ )+"#endif"+R( // FORCE_FIELD

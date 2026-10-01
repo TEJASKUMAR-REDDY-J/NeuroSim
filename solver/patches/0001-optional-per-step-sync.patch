@@ -1,0 +1,14 @@
+diff --git a/src/lbm.cpp b/src/lbm.cpp
+index 02edfe3..1567abc 100644
+--- a/src/lbm.cpp
++++ b/src/lbm.cpp
+@@ -948,7 +948,9 @@ void LBM::do_time_step() { // call kernel_stream_collide to perform one LBM time
+ 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_integrate_particles(); // intgegrate particles forward in time and couple particles to fluid
+ 	communicate_particles(); // communicate_F() is not required in do_time_step()
+ #endif // PARTICLES
++#ifndef NS_NO_STEP_SYNC // NeuroSim experiment: allow disabling the per-step host barrier
+ 	if(get_D()==1u) for(uint d=0u; d<get_D(); d++) lbm_domain[d]->finish_queue(); // this additional domain synchronization barrier is only required in single-GPU, as communication calls already provide all necessary synchronization barriers in multi-GPU
++#endif // NS_NO_STEP_SYNC
+ 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->increment_time_step();
+ }
+ 

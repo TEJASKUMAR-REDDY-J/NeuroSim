@@ -1,0 +1,13 @@
+diff --git a/src/graphics.cpp b/src/graphics.cpp
+index c77c841..d28777b 100644
+--- a/src/graphics.cpp
++++ b/src/graphics.cpp
+@@ -825,7 +825,7 @@ int main(int argc, char* argv[]) {
+ 
+ #endif // INTERACTIVE_GRAPHICS_ASCII
+ 
+-#if !defined(INTERACTIVE_GRAPHICS) && !defined(INTERACTIVE_GRAPHICS_ASCII)
++#if !defined(INTERACTIVE_GRAPHICS) && !defined(INTERACTIVE_GRAPHICS_ASCII) && !defined(NEUROSIM_WORKER) // NeuroSim: worker provides its own main()
+ 
+ int main(int argc, char* argv[]) {
+ 	main_arguments = get_main_arguments(argc, argv);

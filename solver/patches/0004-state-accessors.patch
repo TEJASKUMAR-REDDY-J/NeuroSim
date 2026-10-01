@@ -1,0 +1,21 @@
+diff --git a/src/lbm.hpp b/src/lbm.hpp
+index a2ff421..4cccc1d 100644
+--- a/src/lbm.hpp
++++ b/src/lbm.hpp
+@@ -120,6 +120,16 @@ public:
+ 	void finish_queue();
+ 
+ 	const Device& get_device() const { return device; }
++	// NeuroSim: state access for checkpoint/restart and field export
++	Memory<fpxx>& get_fi() { return fi; }
++	void set_t(const ulong t) { this->t = t; }
++#ifdef SURFACE
++	Memory<float>& get_mass() { return mass; }
++	Memory<float>& get_massex() { return massex; }
++#endif // SURFACE
++#ifdef TEMPERATURE
++	Memory<fpxx>& get_gi() { return gi; }
++#endif // TEMPERATURE
+ 	uint get_Nx() const { return Nx; } // get (local) lattice dimensions in x-direction
+ 	uint get_Ny() const { return Ny; } // get (local) lattice dimensions in y-direction
+ 	uint get_Nz() const { return Nz; } // get (local) lattice dimensions in z-direction
