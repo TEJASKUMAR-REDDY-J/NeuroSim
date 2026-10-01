@@ -688,7 +688,7 @@ class Main(QtWidgets.QMainWindow):
                        "ddf_pad": pad if pad == "auto" else int(pad), "device": f["device"].value()}
         c["run"] = {"steps": f["steps"].value(), "telemetry_every": f["tel"].value(), "slice_every": f["slice_every"].value(),
                     "frame_fps": f["fps"].value(), "render_budget": f["budget"].value() / 100, "checkpoint_every": f["ckpt"].value()}
-        c["view"] = {"modes": [k for k, b in self.vis.items() if b.isChecked()], "field": self.vis_field.currentIndex(),
+        c["view"] = {**self.case.get("view", {}), "modes": [k for k, b in self.vis.items() if b.isChecked()], "field": self.vis_field.currentIndex(),  # keeps settings without a control (e.g. resolution)
                      "slice_axis": self.s_axis.currentIndex(), "slice_field": self.s_field.currentIndex(), "camera": list(self.view.cam),
                      "cloud": {"on": self.cloud_btn.isChecked(), "field": CLOUD_MODES[self.cloud_mode.currentIndex()][1], "gain": 1.0, "density": self._cloud_density()}}
         return c
