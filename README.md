@@ -1,39 +1,45 @@
 # NeuroVerse CFD
 
-NeuroSim is a simulation platform built around the [FluidX3D](https://github.com/ProjectPhysX/FluidX3D) lattice Boltzmann solver: a headless runtime and CLI, experiment and provenance management, self-benchmarking, simulation analytics, and an optional learned-physics layer. The solver stays a high-performance C++/OpenCL core; the platform around it is built so that the CLI, a GUI, remote/HPC execution and notebooks all drive the same API.
+NeuroSim is a desktop CFD workbench built around the [FluidX3D](https://github.com/ProjectPhysX/FluidX3D) lattice Boltzmann solver. FluidX3D stays the high-performance C++/OpenCL core; NeuroSim adds a case system, a native GUI with live GPU-rendered 3D, quantitative slices and monitoring, checkpoints, field export, provenance, and self-benchmarking.
 
-## Status
-
-**Phase 0 (audit) complete.** No platform code yet. The architecture decision, measurements and migration plan are in [docs/phase0/architecture-report.md](docs/phase0/architecture-report.md).
-
-Key measured findings on the reference laptop (Intel UHD iGPU):
-
-- The FluidX3D kernel runs at 81–91 % of attainable memory bandwidth; FP16S storage doubles throughput; FP16C is slower than FP32 on this device, so precision must be chosen by measurement.
-- Power-of-two grids lose 15–25 % to DDF stride aliasing; a padded stride recovers +19 % (128³) and +34 % (256³).
-- The per-step host barrier costs ~140–230 µs, halving throughput on small grids.
-- Multi-GPU halo exchange is host-staged and not overlapped with compute, which is the main scaling limit in the upstream multi-GPU data.
-
-## Layout
-
-```
-external/FluidX3D/          upstream solver, pinned submodule (never edited in place)
-docs/phase0/                audit report and raw measurement logs
-tools/phase0/               benchmark harness, bandwidth/latency probes, experiment patches, reproduction script
-```
-
-## Reproducing Phase 0
-
-Requirements: Windows, MinGW-w64 `g++` (C++17), an OpenCL GPU driver; optional `rustc` for the FFI probe.
+## Quick start
 
 ```bash
 git clone --recurse-submodules https://github.com/TEJASKUMAR-REDDY-J/NeuroSim.git
 ```
 
+Double-click `NeuroSim.bat`, or:
+
 ```bash
-powershell -ExecutionPolicy Bypass -File tools\phase0\run_phase0.ps1
+python -m neurosim
 ```
 
-Results are written to `build/phase0/phase0_results.txt`.
+Pick a preset (car on a moving road, Ahmed body, wing, rotating fan, sphere, cylinder vortex street, lid-driven cavity, particles, dam break, Rayleigh–Bénard convection, Taylor–Green vortex) or import an STL/OBJ/PLY model, then **Preview** or **Run**. See [docs/app.md](docs/app.md).
+
+Requirements: an OpenCL GPU driver, `g++` (MinGW-w64 on Windows), Python 3.10+ with NumPy, PyQt5, Matplotlib.
+
+## Solver optimizations (measured, Intel UHD iGPU, FP16S, D3Q19)
+
+| Change | Effect | Evidence |
+|---|---|---|
+| Padded DDF stride (patch 0002) | 128³: 150 → 180 MLUP/s (+20 %), 256³: 147 → 189 (+29 %), neutral on other sizes | bit-identical results (`tests/test_padding_identity.py`) |
+| No host barrier per time step (patch 0001) | up to 2× on small grids (32³: 108 → 217 MLUP/s), no change on large grids | `docs/phase0/results/` |
+| Live-render time budget | 3D frames limited to a set share of wall time (default 20 %); before: rendering took 50 % | in-app insight panel |
+| Raw frame transfer | GPU-rendered frames go to the GUI as raw RGB32, no image encoding | — |
+| Precision chosen by measurement | `neurosim bench` picks the fastest of FP32/FP16S/FP16C per machine; FP16C is slower than FP32 on this iGPU | Phase 0 report |
+| Rejected: workgroup size 32/128/256 | within noise of the default 64; 256 is slower | Phase 0 notes |
+
+## Layout
+
+```
+external/FluidX3D/     upstream solver, pinned submodule (never edited in place)
+solver/patches/        NeuroSim modifications to FluidX3D, one named patch each
+solver/worker/         solver process: case loader, telemetry, live control, slices, checkpoints, exports
+neurosim/              Python platform: build cache, cases, geometry, runs, benchmark, desktop app
+tests/                 end-to-end preset test, padding bit-identity test, GUI smoke test, drag validation
+docs/                  Phase 0 audit report, app guide, measurement logs
+tools/phase0/          Phase 0 benchmark harness and probes
+```
 
 ## Licence
 
