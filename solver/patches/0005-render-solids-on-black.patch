@@ -1,5 +1,5 @@
 diff --git a/src/kernel.cpp b/src/kernel.cpp
-index d9d5979..16d0d38 100644
+index d9d5979..f2cb1c9 100644
 --- a/src/kernel.cpp
 +++ b/src/kernel.cpp
 @@ -147,6 +147,9 @@ string opencl_c_container() { return R( // ########################## begin of O
@@ -21,6 +21,24 @@ index d9d5979..16d0d38 100644
  	if(flagsn_bo==TYPE_S) {
  		const float3 Fn = def_scale_F*load3(F, n);
  		const float Fnl = length(Fn);
+@@ -2535,7 +2538,7 @@ string opencl_c_container() { return R( // ########################## begin of O
+ 			const uchar flags_nc = (flags[n_global_c]&TYPE_BO)==TYPE_S; // load flags from global memory into local memory
+ 			flags_cache[n_local_c] = flags_nc;
+ )+"#ifdef FORCE_FIELD"+R(
+-			F_cache[n_local_c] = (flags_nc ? load3(F, n_global_c) : (float3)(0.0f, 0.0f, 0.0f)); // load F from global memory into local memory
++			F_cache[n_local_c] = (flags_nc&&(flags[n_global_c]&TYPE_X) ? load3(F, n_global_c) : (float3)(0.0f, 0.0f, 0.0f)); // NeuroSim: force coloring only on marked objects (TYPE_X), walls stay neutral
+ )+"#endif"+R( // FORCE_FIELD
+ 		}
+ 	}
+@@ -2583,7 +2586,7 @@ string opencl_c_container() { return R( // ########################## begin of O
+ 	calculate_j8(xyz, j);
+ 	for(uint i=0u; i<8u; i++) v[i] = (flags[j[i]]&TYPE_BO)==TYPE_S;
+ )+"#ifdef FORCE_FIELD"+R(
+-	for(uint i=0u; i<8u; i++) Fj[i] = (v[i] ? load3(F, j[i]) : (float3)(0.0f, 0.0f, 0.0f));
++	for(uint i=0u; i<8u; i++) Fj[i] = (v[i]&&(flags[j[i]]&TYPE_X) ? load3(F, j[i]) : (float3)(0.0f, 0.0f, 0.0f)); // NeuroSim: only marked objects
+ )+"#endif"+R( // FORCE_FIELD
+ )+"#endif"+R( // do not use local memory
+ 	float3 triangle_vertices[12]; // 12 triangle vertices for marching_cubes (return 12 vertices instead of 15 triangles to save register space)
 @@ -2597,9 +2600,9 @@ string opencl_c_container() { return R( // ########################## begin of O
  		int c0=0xDFDFDF, c1=0xDFDFDF, c2=0xDFDFDF;
  )+"#ifdef FORCE_FIELD"+R(

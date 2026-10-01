@@ -14,7 +14,7 @@ Double-click `NeuroSim.bat`, or:
 python -m neurosim
 ```
 
-Pick a preset (car on a moving road, Ahmed body, wing, rotating fan, sphere, cylinder vortex street, lid-driven cavity, particles, dam break, Rayleigh–Bénard convection, Taylor–Green vortex) or import an STL/OBJ/PLY model, then **Preview** or **Run**. See [docs/app.md](docs/app.md).
+Pick a preset (car on a moving road, Ahmed body, wing, rotating fan, sphere, cylinder vortex street, lid-driven cavity, particles, dam break, Rayleigh–Bénard convection, Taylor–Green vortex) or import an STL/OBJ/PLY model, then **Preview** or **Run**. The 3D view shows FluidX3D-style vortex lines on black, with an optional faint translucent speed haze (or a full translucent gas cloud for gas and convection cases). See [docs/app.md](docs/app.md).
 
 Requirements: an OpenCL GPU driver, `g++` (MinGW-w64 on Windows), Python 3.10+ with NumPy, PyQt5, Matplotlib.
 

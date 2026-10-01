@@ -55,7 +55,16 @@ static const string ns_kernels = R"CLC(
 #define TYPE_S 0x01
 #define TYPE_G 0x20
 inline bool is_fluid(const uchar f) { return !(f&(TYPE_S|TYPE_G)); }
-// per-work-item partial sums: count, rho, |u|^2, max|u|, ux, uy, uz, extra (T or phi)
+inline float vorticity(const global float* u, const uint x, const uint y, const uint z, const uint Nx, const uint Ny, const uint Nz) { // |curl u|, central differences, clamped at the box edges
+	const ulong N = (ulong)Nx*Ny*Nz;
+	const ulong xp=(ulong)min(x+1u,Nx-1u)+((ulong)y+(ulong)z*Ny)*Nx, xm=(ulong)(x>0u?x-1u:0u)+((ulong)y+(ulong)z*Ny)*Nx;
+	const ulong yp=(ulong)x+((ulong)min(y+1u,Ny-1u)+(ulong)z*Ny)*Nx, ym=(ulong)x+((ulong)(y>0u?y-1u:0u)+(ulong)z*Ny)*Nx;
+	const ulong zp=(ulong)x+((ulong)y+(ulong)min(z+1u,Nz-1u)*Ny)*Nx, zm=(ulong)x+((ulong)y+(ulong)(z>0u?z-1u:0u)*Ny)*Nx;
+	const float wx = 0.5f*((u[2ul*N+yp]-u[2ul*N+ym])-(u[N+zp]-u[N+zm]));
+	const float wy = 0.5f*((u[zp]-u[zm])-(u[2ul*N+xp]-u[2ul*N+xm]));
+	const float wz = 0.5f*((u[N+xp]-u[N+xm])-(u[yp]-u[ym]));
+	return sqrt(wx*wx+wy*wy+wz*wz);
+}// per-work-item partial sums: count, rho, |u|^2, max|u|, ux, uy, uz, extra (T or phi)
 kernel void ns_stats(const global float* rho, const global float* u, const global uchar* flags, const global float* extra, const uint has_extra, const ulong N, global float* partial) {
 	const ulong id = get_global_id(0), stride = get_global_size(0);
 	float c=0.0f, sr=0.0f, su2=0.0f, mu=0.0f, sx=0.0f, sy=0.0f, sz=0.0f, se=0.0f;
@@ -87,26 +96,69 @@ kernel void ns_slice(const global float* rho, const global float* u, const globa
 		case 2u: v = uy; break;
 		case 3u: v = uz; break;
 		case 4u: v = rho[n]; break;
-		case 5u: { // vorticity magnitude, central differences, clamped at the box edges
-			const ulong xp=(ulong)min(x+1u,Nx-1u)+((ulong)y+(ulong)z*Ny)*Nx, xm=(ulong)(x>0u?x-1u:0u)+((ulong)y+(ulong)z*Ny)*Nx;
-			const ulong yp=(ulong)x+((ulong)min(y+1u,Ny-1u)+(ulong)z*Ny)*Nx, ym=(ulong)x+((ulong)(y>0u?y-1u:0u)+(ulong)z*Ny)*Nx;
-			const ulong zp=(ulong)x+((ulong)y+(ulong)min(z+1u,Nz-1u)*Ny)*Nx, zm=(ulong)x+((ulong)y+(ulong)(z>0u?z-1u:0u)*Ny)*Nx;
-			const float wx = 0.5f*((u[2ul*N+yp]-u[2ul*N+ym])-(u[N+zp]-u[N+zm]));
-			const float wy = 0.5f*((u[zp]-u[zm])-(u[2ul*N+xp]-u[2ul*N+xm]));
-			const float wz = 0.5f*((u[N+xp]-u[N+xm])-(u[yp]-u[ym]));
-			v = sqrt(wx*wx+wy*wy+wz*wz);
-		} break;
+		case 5u: v = vorticity(u, x, y, z, Nx, Ny, Nz); break;
+
 		case 6u: v = extra[n]; break; // temperature or fill level
 		case 7u: v = (float)f; break;
 		case 8u: v = (rho[n]-1.0f)/3.0f; break; // lattice pressure deviation
 	}
 	out[id] = v;
 }
-)CLC";
+// ---- translucent "gas cloud": every sampled fluid cell is splatted as an additive point, opacity from the chosen quantity
+inline float3 rainbow(const float x) { // blue - cyan - green - yellow - red
+	const float h = 4.0f*clamp(x, 0.0f, 1.0f);
+	return (float3)(clamp(h-2.0f, 0.0f, 1.0f), clamp(h<2.0f ? h : 4.0f-h, 0.0f, 1.0f), clamp(2.0f-h, 0.0f, 1.0f));
+}
+kernel void ns_cloud(const global float* rho, const global float* u, const global uchar* flags, const global float* extra, const uint Nx, const uint Ny, const uint Nz,
+                     const uint field, const uint stride, const float scale, const float uref, const float t0, const float alpha,
+                     const float Rxx, const float Rxy, const float Rxz, const float Ryx, const float Ryy, const float Ryz, const float Rzx, const float Rzy, const float Rzz,
+                     const float px, const float py, const float pz, const float zoom, const float dis, const uint W, const uint H, global uint* acc) {
+	const uint sx=(Nx+stride-1u)/stride, sy=(Ny+stride-1u)/stride, sz=(Nz+stride-1u)/stride;
+	const uint id = get_global_id(0);
+	if(id>=sx*sy*sz) return;
+	const uint x=(id%sx)*stride, y=((id/sx)%sy)*stride, z=(id/(sx*sy))*stride;
+	const ulong N = (ulong)Nx*Ny*Nz, n = (ulong)x+((ulong)y+(ulong)z*Ny)*Nx;
+	if(!is_fluid(flags[n])) return;
+	const float ux=u[n], uy=u[N+n], uz=u[2ul*N+n], speed = sqrt(ux*ux+uy*uy+uz*uz)/(1.6f*uref);
+	float v; float3 col;
+	switch(field) {
+		case 0u: v = vorticity(u, x, y, z, Nx, Ny, Nz)*scale; col = rainbow(speed); break; // vortices, colored by velocity
+		case 1u: v = fabs(speed-1.0f/1.6f)*1.6f*scale; col = rainbow(speed); break; // deviation from free stream: wakes, jets
+		case 2u: { const float d = (extra[n]-t0)*scale; v = fabs(d); col = d>0.0f ? mix((float3)(1.0f, 0.25f, 0.05f), (float3)(1.0f, 0.85f, 0.35f), clamp(d-1.0f, 0.0f, 1.0f)) : mix((float3)(0.1f, 0.4f, 1.0f), (float3)(0.55f, 0.9f, 1.0f), clamp(-d-1.0f, 0.0f, 1.0f)); } break; // thermal plumes: hot orange, cold blue
+		case 3u: { const float d = (rho[n]-1.0f)*scale; v = fabs(d); col = d>0.0f ? (float3)(1.0f, 0.55f, 0.1f) : (float3)(0.1f, 0.5f, 1.0f); } break; // pressure waves
+		default: v = fmax(speed-0.72f, 0.0f)*4.0f*scale; col = rainbow(speed); break; // speed haze: only flow faster than the free stream (the red regions)
+	}
+	const float v4 = v*v*v*v, a = alpha*v4/(1.0f+v4); // steep soft threshold: quiet regions stay transparent, strong structures saturate
+	if(a<1E-4f) return;
+	uint h = (uint)n*2654435761u; h ^= h>>15; h *= 2246822519u; h ^= h>>13; // per-cell jitter breaks grid moire
+	const float3 jit = (float)stride*((float3)((float)(h&1023u), (float)((h>>10)&1023u), (float)((h>>20)&1023u))/1023.0f-0.5f);
+	const float3 p = (float3)((float)x+0.5f-0.5f*(float)Nx-px, (float)y+0.5f-0.5f*(float)Ny-py, (float)z+0.5f-0.5f*(float)Nz-pz)+jit;
+	const float rz = Rzx*p.x+Rzy*p.y+Rzz*p.z;
+	const float rs = zoom*dis/(dis-rz*zoom);
+	if(rs<=0.0f) return;
+	const int ix = (int)((Rxx*p.x+Rxy*p.y+Rxz*p.z)*rs+0.5f*(float)W), iy = (int)((Ryx*p.x+Ryy*p.y+Ryz*p.z)*rs+0.5f*(float)H);
+	const int r = clamp((int)(0.5f*rs*(float)stride), 0, 2); // splat radius so zoomed-in clouds stay closed
+	const uint3 c = convert_uint3(1024.0f*a*col);
+	for(int j=-r; j<=r; j++) for(int i=-r; i<=r; i++) {
+		const int qx=ix+i, qy=iy+j;
+		if(qx<0||qy<0||qx>=(int)W||qy>=(int)H) continue;
+		const uint q = 3u*((uint)qx+(uint)qy*W);
+		atomic_add(&acc[q], c.x); atomic_add(&acc[q+1u], c.y); atomic_add(&acc[q+2u], c.z);
+	}
+}
+kernel void ns_cloud_tonemap(global uint* acc, global int* out, const uint W, const uint H) { // 1-exp(-density) and clear
+	const uint id = get_global_id(0);
+	if(id>=W*H) return;
+	const float3 a = (float3)((float)acc[3u*id], (float)acc[3u*id+1u], (float)acc[3u*id+2u])/1024.0f;
+	acc[3u*id] = acc[3u*id+1u] = acc[3u*id+2u] = 0u;
+	const float3 c = 255.0f*((float3)(1.0f)-exp(-a));
+	out[id] = (int)c.x<<16|(int)c.y<<8|(int)c.z;
+})CLC";
 
 struct NsKernels {
 	cl::CommandQueue queue;
-	cl::Kernel stats, slice;
+	cl::Kernel stats, slice, cloud, cloud_tonemap;
+	cl::Buffer cloud_acc, cloud_rgb;
 	cl::Buffer partial, slice_out;
 	uint stats_items = 16384u;
 	size_t slice_capacity = 0u;
@@ -118,6 +170,11 @@ struct NsKernels {
 		if(program.build({ device.info.cl_device }, "-cl-std=CL1.2")) print_error("NeuroSim kernels failed to compile: "+program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device.info.cl_device));
 		stats = cl::Kernel(program, "ns_stats");
 		slice = cl::Kernel(program, "ns_slice");
+		cloud = cl::Kernel(program, "ns_cloud");
+		cloud_tonemap = cl::Kernel(program, "ns_cloud_tonemap");
+		cloud_acc = cl::Buffer(context, CL_MEM_READ_WRITE, (size_t)camera.width*camera.height*3u*sizeof(uint));
+		const uint zero = 0u; queue.enqueueFillBuffer(cloud_acc, zero, 0u, (size_t)camera.width*camera.height*3u*sizeof(uint));
+		cloud_rgb = cl::Buffer(context, CL_MEM_READ_WRITE, (size_t)camera.width*camera.height*sizeof(int));
 		partial = cl::Buffer(context, CL_MEM_READ_WRITE, (size_t)stats_items*8u*sizeof(float));
 	}
 };
@@ -380,9 +437,41 @@ int main(int argc, char* argv[]) {
 		slice_s += now_s()-s0;
 	};
 	uint frame_seq = 0u;
+	// translucent gas cloud (NeuroSim renderer, composited over FluidX3D's frame)
+	bool cloud_on = cfg.value<bool>("cloud", false);
+	uint cloud_field = cfg.value<uint>("cloud_field", 0u);
+	float cloud_gain = cfg.value<float>("cloud_gain", 1.0f), cloud_density = cfg.value<float>("cloud_density", 1.0f);
+	const float uref = cfg.value<float>("u_ref", 0.075f), T0 = 0.5f*(T_hot+T_cold), dT = fmax(0.5f*(T_hot-T_cold), 1E-3f);
+	vector<int> frame_out((size_t)camera.width*camera.height), cloud_px((size_t)camera.width*camera.height);
+	auto render_cloud = [&](const int* bitmap) {
+		lbm.update_fields();
+		const uint stride = max(1u, (uint)ceil(cbrt((double)lbm.get_N()/4.0E6))); // at most ~4M splats per frame
+		const float base[5] = { 1.0f/(0.1f*uref), 1.5f, 1.0f/dT, 300.0f, 1.0f }; // quantity at half opacity: vorticity 0.1*u_ref per cell, 100 % velocity deficit, half the hot-cold range, density 1/300
+		const float scale = cloud_gain*base[min(cloud_field, 4u)];
+		const float alpha = cloud_density*24.0f*(float)stride/(float)max(max(Nx, Ny), Nz); // opacity per splat ~ 1/depth so a full column saturates
+		const float3 p = camera.free ? camera.pos : float3(0.0f);
+		cl::Kernel& k = ns.cloud; uint a = 0u;
+		for(const cl::Buffer* b : { &dom.rho.get_cl_buffer(), &dom.u.get_cl_buffer(), &dom.flags.get_cl_buffer(), &extra_buffer }) k.setArg(a++, *b);
+		for(uint v : { Nx, Ny, Nz, cloud_field, stride }) k.setArg(a++, v);
+		for(float v : { scale, uref, T0, alpha, camera.R.xx, camera.R.xy, camera.R.xz, camera.R.yx, camera.R.yy, camera.R.yz, camera.R.zx, camera.R.zy, camera.R.zz, p.x, p.y, p.z, camera.zoom, camera.dis }) k.setArg(a++, v);
+		k.setArg(a++, camera.width); k.setArg(a++, camera.height); k.setArg(a++, ns.cloud_acc);
+		const ulong items = (ulong)((Nx+stride-1u)/stride)*((Ny+stride-1u)/stride)*((Nz+stride-1u)/stride);
+		ns.queue.enqueueNDRangeKernel(k, cl::NullRange, cl::NDRange((items+63ull)/64ull*64ull), cl::NDRange(64u));
+		ns.cloud_tonemap.setArg(0, ns.cloud_acc); ns.cloud_tonemap.setArg(1, ns.cloud_rgb); ns.cloud_tonemap.setArg(2, camera.width); ns.cloud_tonemap.setArg(3, camera.height);
+		ns.queue.enqueueNDRangeKernel(ns.cloud_tonemap, cl::NullRange, cl::NDRange(((size_t)camera.width*camera.height+63u)/64u*64u), cl::NDRange(64u));
+		ns.queue.enqueueReadBuffer(ns.cloud_rgb, CL_TRUE, 0u, cloud_px.size()*sizeof(int), cloud_px.data());
+		parallel_for((ulong)frame_out.size(), [&](ulong i) { // screen blend: light adds, nothing gets darker
+			const int f = bitmap[i], g = cloud_px[i];
+			int o = 0;
+			for(int s=0; s<24; s+=8) { const int fc=(f>>s)&255, gc=(g>>s)&255; o |= (255-(255-fc)*(255-gc)/255)<<s; }
+			frame_out[i] = o;
+		});
+		return (const int*)frame_out.data();
+	};
 	auto write_frame = [&]() { // raw 0x00RRGGBB pixels (= Qt RGB32), double-buffered, no encoding
 		const double r0 = now_s();
 		const int* bitmap = lbm.graphics.draw_frame();
+		if(cloud_on) bitmap = render_cloud(bitmap);
 		const string name = "frame_"+to_string(frame_seq%2u)+".raw";
 		std::ofstream(run_dir+"live/"+name, std::ios::out|std::ios::binary).write((const char*)bitmap, (std::streamsize)camera.width*camera.height*4u);
 		last_render_dt = now_s()-r0;
@@ -441,6 +530,7 @@ int main(int argc, char* argv[]) {
 			else if(cmd=="slice") { in >> slice_axis >> slice_pos >> slice_field; slice_axis = min(slice_axis, 2u); write_slice(); }
 			else if(cmd=="rates") { in >> telemetry_every >> slice_every >> frame_fps; telemetry_every = max(1ull, telemetry_every); next_tel = lbm.get_t()+telemetry_every; next_slice = slice_every ? lbm.get_t()+slice_every : max_ulong; }
 			else if(cmd=="budget") { in >> render_budget; }
+			else if(cmd=="cloud") { int on=0; in >> on >> cloud_field >> cloud_gain >> cloud_density; cloud_on = on!=0; write_frame(); last_frame = now_s(); }
 			else if(cmd=="frame") write_frame();
 			else if(cmd=="export") export_fields();
 			else if(cmd=="checkpoint") checkpoint();

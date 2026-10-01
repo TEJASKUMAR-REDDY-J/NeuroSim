@@ -37,7 +37,8 @@ DEFAULT = {
     "forces": False,
     "solver": {"precision": "auto", "lattice": "auto", "collision": "SRT", "ddf_pad": "auto", "device": -1},
     "run": {"steps": 0, "telemetry_every": 100, "slice_every": 100, "frame_fps": 8, "render_budget": 0.2, "checkpoint_every": 0},
-    "view": {"modes": ["lattice", "surface", "q_criterion"], "field": 0, "slice_axis": 0, "slice_field": 0, "camera": [-35.0, 25.0, 60.0, 1.0]},
+    "view": {"modes": ["lattice", "surface", "q_criterion"], "field": 0, "slice_axis": 0, "slice_field": 0, "camera": [-35.0, 25.0, 60.0, 1.0],
+             "cloud": {"on": False, "field": 4, "gain": 1.0, "density": 0.15}},
     "si": None,
     "reference_area": "frontal",  # for force coefficients: "frontal", "planform" or a number in cells^2
 }
@@ -207,7 +208,9 @@ def prepare(case, run_dir):
         "steps": int(c["run"]["steps"]), "telemetry_every": int(c["run"]["telemetry_every"]), "slice_every": int(c["run"]["slice_every"]),
         "frame_fps": float(c["run"]["frame_fps"]), "render_budget": float(c["run"].get("render_budget", 0.2)), "checkpoint_every": int(c["run"]["checkpoint_every"]),
         "vis_modes": sum(VIS[m] for m in view["modes"]), "vis_field": int(view["field"]), "camera": view["camera"],
-        "slice_axis": int(view["slice_axis"]), "slice_field": int(view["slice_field"]),
+        "slice_axis": int(view["slice_axis"]), "slice_field": int(view["slice_field"]), "u_ref": u,
+        "cloud": bool(view.get("cloud", {}).get("on")), "cloud_field": int(view.get("cloud", {}).get("field", 0)),
+        "cloud_gain": float(view.get("cloud", {}).get("gain", 1.0)), "cloud_density": float(view.get("cloud", {}).get("density", 1.0)),
         "has_T": "TEMPERATURE" in features(c), "has_phi": "SURFACE" in features(c) and "TEMPERATURE" not in features(c),
     })
     for f in FACES:

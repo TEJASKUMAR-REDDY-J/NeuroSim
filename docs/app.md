@@ -18,6 +18,7 @@ Requirements: Windows or Linux, an OpenCL driver for your GPU (or a CPU OpenCL r
 | Left: Solver | Storage precision (auto = fastest measured), velocity set, collision operator, memory-layout padding, device, run length, telemetry/slice/checkpoint intervals, live-3D frame rate and its maximum share of time |
 | Center | 3D view rendered by FluidX3D's GPU renderer on black: domain outline, solids (colored by surface force when forces are on), vortices (Q-criterion, colored by velocity), streamlines, velocity field and slices, free surface (rasterized or raytraced), particles. Drag to orbit, wheel to zoom, shift+wheel for field of view. |
 | Bottom | Throughput (solver and wall clock), max velocity, drag/lift coefficients, kinetic energy, mass drift, temperature or liquid volume, and an insight panel that names the current bottleneck |
+| Haze | Optional translucent overlay rendered on the GPU over the 3D view. **Speed haze** (default for aerodynamics) faintly tints only regions faster than the free stream, under the vortex lines. **Vortex / wake / thermal cloud** and **pressure waves** render the flow as translucent gas, meant for gas, smoke and convection cases. Intensity slider; off for non-aero presets. |
 | Right: Slice | Quantitative cut plane (velocity magnitude/components, density, vorticity, temperature or fill level, flags, pressure) with color bar and hover readout |
 | Right: Runs | Every run with its status; open a finished run to see its history and last frame, resume from the latest checkpoint, open the run folder |
 

@@ -19,6 +19,10 @@ Findings from building the solver worker and the desktop app. All measurements: 
 * **Free-surface rendering** needs `skybox8k.png` at `<exe>/../skybox/`; the build cache provides it.
 * **Live rendering cost**: Q-criterion plus surfaces at 1280×720 took 50 % of wall time on the iGPU. Frames are now throttled to a configurable share of wall time (default 20 %); camera interaction still renders immediately.
 
+## Translucent overlay renderer
+
+NeuroSim OpenCL kernels in the worker splat every fluid cell (stride chosen so at most ~4 M splats per frame) with additive color, opacity v⁴/(1+v⁴) of the chosen quantity, per-cell jitter against grid moiré, tone mapping 1−e^(−density), and a screen blend over FluidX3D's frame. It reuses FluidX3D's camera matrix, so overlay and lines align. Cost on the iGPU: about 0.2 s per frame including the command round trip, within the live-render time budget. For aerodynamics the dense cloud hid the vortex structures, so the default is a faint speed haze that only marks accelerated flow.
+
 ## Rejected optimization
 
 Workgroup size 32 / 64 / 128 / 256 for all kernels: 32–128 within run-to-run noise of the default 64, 256 about 5 % slower (96³, 136³, 192³, two repeats each). Kept 64.

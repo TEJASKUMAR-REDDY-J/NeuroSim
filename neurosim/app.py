@@ -22,6 +22,8 @@ MODELS = runner.WORKSPACE / "models"
 VIS_BUTTONS = [("Domain", "lattice"), ("Solids", "surface"), ("Vortices", "q_criterion"), ("Streamlines", "streamlines"),
                ("Velocity field", "field"), ("Liquid surface", "free_surface"), ("Raytraced liquid", "raytrace"), ("Particles", "particles")]
 
+CLOUD_MODES = [("Speed haze", 4), ("Vortex cloud", 0), ("Wake cloud", 1), ("Thermal cloud", 2), ("Pressure waves", 3)]
+
 # ------------------------------------------------------------------ design tokens
 C = {"bg": "#0a0c10", "panel": "#11141a", "card": "#161a21", "card2": "#1c212a", "border": "#252b36", "text": "#e7eaf0", "muted": "#8b94a5",
      "dim": "#5d6575", "accent": "#4f8cff", "accent2": "#7aa7ff", "ok": "#34d399", "warn": "#fbbf24", "bad": "#f87171", "orange": "#ff9f43"}
@@ -472,6 +474,14 @@ class Main(QtWidgets.QMainWindow):
         for label, key in VIS_BUTTONS:
             b = QtWidgets.QPushButton(label); b.setObjectName("toggle"); b.setCheckable(True); b.toggled.connect(self.send_vis); b.setCursor(Qt.PointingHandCursor)
             self.vis[key] = b; bar.addWidget(b)
+        bar.addSpacing(10)
+        self.cloud_btn = QtWidgets.QPushButton("Haze"); self.cloud_btn.setObjectName("toggle"); self.cloud_btn.setCheckable(True); self.cloud_btn.setCursor(Qt.PointingHandCursor)
+        self.cloud_btn.setToolTip("Faint translucent overlay rendered on the GPU: speed haze tints only regions faster than the free stream; clouds are for gas/thermal cases")
+        self.cloud_mode = QtWidgets.QComboBox(); self.cloud_mode.addItems([m for m, _ in CLOUD_MODES])
+        self.cloud_amt = QtWidgets.QSlider(Qt.Horizontal); self.cloud_amt.setRange(0, 100); self.cloud_amt.setValue(44); self.cloud_amt.setFixedWidth(80); self.cloud_amt.setToolTip("Overlay intensity")
+        for w_ in (self.cloud_btn, self.cloud_mode, self.cloud_amt):
+            bar.addWidget(w_)
+        self.cloud_btn.toggled.connect(self.send_cloud); self.cloud_mode.currentIndexChanged.connect(self.send_cloud); self.cloud_amt.valueChanged.connect(self.send_cloud)
         bar.addStretch(1)
         self.vis_field = QtWidgets.QComboBox(); self.vis_field.addItems(["Color: velocity", "Color: density", "Color: temperature"]); self.vis_field.currentIndexChanged.connect(self.send_vis)
         self.vis_slice = QtWidgets.QComboBox(); self.vis_slice.addItems(["Field: volume", "Field: x slice", "Field: y slice", "Field: z slice", "Field: xz", "Field: xyz", "Field: yz", "Field: xy"]); self.vis_slice.currentIndexChanged.connect(self.send_vis)
@@ -640,6 +650,14 @@ class Main(QtWidgets.QMainWindow):
         for w, val in ((self.vis_field, v["field"]), (self.s_axis, v["slice_axis"]), (self.s_field, v["slice_field"])):
             w.blockSignals(True); w.setCurrentIndex(int(val)); w.blockSignals(False)
         self.view.cam = list(v["camera"])
+        cl = v.get("cloud", {})
+        for w_ in (self.cloud_btn, self.cloud_mode, self.cloud_amt):
+            w_.blockSignals(True)
+        self.cloud_btn.setChecked(bool(cl.get("on")))
+        self.cloud_mode.setCurrentIndex([f_ for _, f_ in CLOUD_MODES].index(cl.get("field", 4)))
+        self.cloud_amt.setValue(int(round(100 * np.log(max(cl.get("density", 0.15), 0.02) / 0.02) / np.log(100))))
+        for w_ in (self.cloud_btn, self.cloud_mode, self.cloud_amt):
+            w_.blockSignals(False)
         self.obj_list.clear()
         for o in c["objects"]:
             self.obj_list.addItem(self._obj_label(o))
@@ -671,7 +689,8 @@ class Main(QtWidgets.QMainWindow):
         c["run"] = {"steps": f["steps"].value(), "telemetry_every": f["tel"].value(), "slice_every": f["slice_every"].value(),
                     "frame_fps": f["fps"].value(), "render_budget": f["budget"].value() / 100, "checkpoint_every": f["ckpt"].value()}
         c["view"] = {"modes": [k for k, b in self.vis.items() if b.isChecked()], "field": self.vis_field.currentIndex(),
-                     "slice_axis": self.s_axis.currentIndex(), "slice_field": self.s_field.currentIndex(), "camera": list(self.view.cam)}
+                     "slice_axis": self.s_axis.currentIndex(), "slice_field": self.s_field.currentIndex(), "camera": list(self.view.cam),
+                     "cloud": {"on": self.cloud_btn.isChecked(), "field": CLOUD_MODES[self.cloud_mode.currentIndex()][1], "gain": 1.0, "density": self._cloud_density()}}
         return c
 
     def form_changed(self, *_):
@@ -833,6 +852,12 @@ class Main(QtWidgets.QMainWindow):
         modes = sum(case_mod.VIS[k] for k, b in self.vis.items() if b.isChecked())
         N = self.case["domain"]; frac = self.vis_pos.value() / 1000
         self.cmd(f"vis {modes} {self.vis_field.currentIndex()} {self.vis_slice.currentIndex()} {int(frac * (N[0] - 1))} {int(frac * (N[1] - 1))} {int(frac * (N[2] - 1))}")
+
+    def _cloud_density(self):
+        return 0.02 * 100 ** (self.cloud_amt.value() / 100)  # 0.02 .. 2, log scale
+
+    def send_cloud(self, *_):
+        self.cmd(f"cloud {int(self.cloud_btn.isChecked())} {CLOUD_MODES[self.cloud_mode.currentIndex()][1]} 1 {self._cloud_density():.4f}")
 
     def send_slice(self, *_):
         axis = self.s_axis.currentIndex()
